@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Référentiel des disciplines – Vue complète</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f7;margin:0}
+  .wrap{max-width:1100px;margin:24px auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px}
+  h1{margin:0 0 10px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
+  label{display:block;font-size:12px;color:#334155}
+  input,select,textarea{padding:8px;border:1px solid #cbd5e1;border-radius:8px}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid #e5e7eb;padding:6px;text-align:left}
+  th{background:#f1f5f9}
+  .btn{padding:6px 10px;border:1px solid #334155;border-radius:8px;background:#fff;cursor:pointer}
+  .btn.primary{background:#334155;color:#fff}
+  .muted{color:#64748b;font-size:12px}
+  .drag{cursor:grab}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Catalogue des disciplines (multi-inspections)</h1>
+  <div class="row">
+    <div>
+      <label>Inspection<br>
+        <select id="insp"></select>
+      </label>
+    </div>
+    <div>
+      <label>Cycle<br>
+        <select id="cycle"><option value="">—</option><option>premier</option><option>second</option></select>
+      </label>
+    </div>
+    <div>
+      <label>Spécialité<br>
+        <select id="spec"><option value="">—</option></select>
+      </label>
+    </div>
+    <div>
+      <label>Actif<br>
+        <select id="actif"><option value="">toutes</option><option value="true">actives</option><option value="false">inactives</option></select>
+      </label>
+    </div>
+    <div style="align-self:flex-end">
+      <button id="btnLoad" class="btn">Charger</button>
+    </div>
+    <div style="margin-left:auto;align-self:flex-end">
+      <a class="btn" href="/admin">← Retour admin</a>
+    </div>
+  </div>
+
+  <table id="tbl">
+    <thead><tr><th style="width:80px">Ordre</th><th>Code</th><th>Nom</th><th>Actif</th><th>Actions</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="row" style="margin-top:10px">
+    <div>
+      <label>Libellé<br><input id="nom" style="width:260px" placeholder="Nom de la discipline"></label>
+    </div>
+    <div>
+      <label>Code (auto)<br><input id="code" readonly style="width:200px"></label>
+    </div>
+    <div style="align-self:flex-end">
+      <button id="btnAdd" class="btn primary">+ Ajouter</button>
+    </div>
+  </div>
+
+  <details style="margin-top:12px">
+    <summary class="muted">Import JSON (objets {inspection,cycle,specialite,nom,code?,actif?,ordre?,aliases?})</summary>
+    <textarea id="bulk" style="width:100%;min-height:140px"></textarea><br>
+    <button id="btnImport" class="btn">📥 Importer</button>
+  </details>
+</div>
+
+<script>
+async function api(url,opts={}){ const r=await fetch(url,{credentials:'same-origin',...opts}); if(!r.ok) throw new Error((await r.text())||'Erreur'); try{return await r.json();}catch{return {}} }
+const insp=document.getElementById('insp'), cycle=document.getElementById('cycle'), spec=document.getElementById('spec'), actif=document.getElementById('actif');
+const tblBody=document.querySelector('#tbl tbody'); const nom=document.getElementById('nom'); const code=document.getElementById('code');
+
+async function loadInspections(){
+  const list=await api('/api/inspections'); insp.innerHTML=list.map(i=>`<option value="${i.key}">${i.nom}</option>`).join(''); await loadSpecs();
+}
+async function loadSpecs(){
+  spec.innerHTML='<option value="">—</option>'; if(!insp.value || !cycle.value) return;
+  const rows = await api(`/api/disciplines?inspection=${insp.value}&cycle=${cycle.value}`);
+  [...new Set(rows.map(r=>r.specialite))].sort().forEach(s=> spec.insertAdjacentHTML('beforeend',`<option>${s}</option>`));
+}
+insp.onchange=loadSpecs; cycle.onchange=loadSpecs;
+
+document.getElementById('btnLoad').onclick = loadList;
+async function loadList(){
+  const qs = new URLSearchParams({ inspection:insp.value });
+  if(cycle.value) qs.set('cycle', cycle.value);
+  if(spec.value)  qs.set('specialite', spec.value);
+  if(actif.value) qs.set('actif', actif.value);
+  const list = await api('/api/disciplines?'+qs.toString());
+  render(list.sort((a,b)=> (a.ordre??0)-(b.ordre??0) || a.nom.localeCompare(b.nom)));
+}
+function render(list){
+  tblBody.innerHTML = (list||[]).map(d=>`
+    <tr data-id="${d._id}">
+      <td class="drag" title="Glisser pour réordonner">⋮⋮</td>
+      <td><code>${d.code}</code></td>
+      <td contenteditable="true">${d.nom}</td>
+      <td style="text-align:center"><input type="checkbox" ${d.actif?'checked':''}></td>
+      <td>
+        <button class="btn" onclick="save('${d._id}', this)">💾</button>
+        <button class="btn" onclick="toggle('${d._id}', ${d.actif})">${d.actif?'Désactiver':'Activer'}</button>
+      </td>
+    </tr>
+  `).join('');
+  enableDrag();
+}
+window.save = async function(id, btn){
+  const tr = btn.closest('tr');
+  const nom = tr.children[2].textContent.trim();
+  const actif = tr.children[3].querySelector('input').checked;
+  await api('/api/disciplines/'+id,{ method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ nom, actif }) });
+  loadList();
+}
+window.toggle = async function(id, was){
+  await api(`/api/disciplines/${id}/${was?'disable':'enable'}`,{ method:'PATCH' });
+  loadList();
+}
+
+/* ordre via drag & drop (simple) */
+function enableDrag(){
+  let dragEl=null;
+  tblBody.querySelectorAll('tr').forEach(tr=>{
+    tr.draggable=true;
+    tr.addEventListener('dragstart',()=> dragEl=tr);
+    tr.addEventListener('dragover',e=>{e.preventDefault(); const rect=tr.getBoundingClientRect(); const after=(e.clientY-rect.top)>(rect.height/2); tr.parentNode.insertBefore(dragEl, after?tr.nextSibling:tr);});
+    tr.addEventListener('dragend',saveOrder);
+  });
+}
+async function saveOrder(){
+  const ids=[...tblBody.querySelectorAll('tr')].map((tr,i)=>({ id:tr.dataset.id, ordre:i+1 }));
+  await api('/api/disciplines/reorder',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(ids) });
+  loadList();
+}
+
+nom.addEventListener('input', async ()=>{
+  code.value=''; if(!nom.value.trim() || !spec.value) return;
+  try{
+    const qs = new URLSearchParams({ inspection:insp.value, specialite:spec.value, nom:nom.value.trim() });
+    const r = await api('/api/disciplines/slug?'+qs.toString()); code.value=r.code||'';
+  }catch(_){}
+});
+document.getElementById('btnAdd').onclick = async ()=>{
+  if(!insp.value || !cycle.value || !(spec.value||'').trim()) return alert('Choisis inspection/cycle/spécialité');
+  if(!nom.value.trim()) return alert('Libellé requis');
+  await api('/api/disciplines',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ inspection:insp.value, cycle:cycle.value, specialite:spec.value.trim().toUpperCase(), nom:nom.value.trim() }) });
+  nom.value=''; code.value=''; loadList();
+};
+
+document.getElementById('btnImport').onclick = async ()=>{
+  let arr=[]; try{ arr=JSON.parse(document.getElementById('bulk').value||'[]'); }catch(_){ return alert('JSON invalide'); }
+  if(!Array.isArray(arr)||!arr.length) return alert('Tableau vide');
+  await api('/api/disciplines/import',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(arr) });
+  loadList();
+};
+
+loadInspections().then(loadList);
+</script>
+</body>
+</html>

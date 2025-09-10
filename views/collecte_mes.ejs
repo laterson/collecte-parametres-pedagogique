@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>Mes collectes – Inspection</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f7;margin:0;color:#1f2937}
+  .wrap{padding:18px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .btn{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:7px 10px;font-size:13px;cursor:pointer}
+  .btn:hover{background:#f7f7f7}
+  .btn.danger{border-color:#ef4444;color:#ef4444}
+  .btn.danger:hover{background:#fee2e2}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #cfd4da;border-radius:10px;overflow:hidden}
+  th,td{border:1px solid #e5e7eb;padding:8px 10px;text-align:left;font-size:13px}
+  th{background:#eef1f4}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Mes collectes</h1>
+    <div>
+      <a class="btn" href="/collecte/nouvelle">+ Nouvelle collecte</a>
+      <form action="/auth/logout" method="post" style="display:inline"><button class="btn">↩ Déconnexion</button></form>
+    </div>
+  </div>
+
+  <% if((list||[]).length===0){ %>
+    <p>Aucun dépôt pour le moment.</p>
+  <% } else { %>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th><th>Année</th><th>Cycle</th><th>Spécialité</th><th>Éval.</th><th>Établissement</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% list.forEach(c=>{ %>
+        <tr>
+          <td><%= new Date(c.dateDepot||c.createdAt).toLocaleString() %></td>
+          <td><%= c.annee %></td>
+          <td><%= c.cycle %></td>
+          <td><%= c.specialite %></td>
+          <td>E<%= c.evaluation %></td>
+          <td><%= c.etablissement %></td>
+          <td>
+            <button class="btn danger" onclick="delCollecte('<%= c._id %>')">Supprimer</button>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+
+<script>
+async function delCollecte(id){
+  if(!confirm('Supprimer définitivement ce dépôt ?')) return;
+  try{
+    const r = await fetch('/collecte/'+encodeURIComponent(id), { method:'DELETE', credentials:'same-origin' });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data?.error||'Suppression impossible');
+    location.reload();
+  }catch(e){ alert(e.message); }
+}
+</script>
+</body>
+</html>

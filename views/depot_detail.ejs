@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Détail dépôt – <%= depot?.etablissement %> – Éval <%= depot?.evaluation %></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{--b:#cfd4da;--th:#eef1f4;--ink:#1f2937;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f7;color:var(--ink);margin:0}
+    a{color:inherit;text-decoration:none}
+    .wrap{padding:18px;max-width:1200px;margin:0 auto}
+    h1{margin:0 0 8px}
+    .muted{color:var(--muted);font-size:12px}
+    .badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .badge{display:inline-block;background:#111;color:#fff;border-radius:999px;padding:2px 8px;font-size:12px;line-height:18px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .card{background:#fff;border:1px solid var(--b);border-radius:10px;padding:10px}
+    .label{font-size:12px;color:#64748b;margin-bottom:4px}
+    .value{font-weight:700}
+    .pct{font-size:12px;color:#475569;margin-left:6px}
+    .section{margin-top:16px}
+    table{width:100%;border-collapse:collapse;font-size:12px;background:#fff}
+    th,td{border:1px solid var(--b);padding:4px 6px;text-align:center;vertical-align:middle}
+    th{background:var(--th)}
+    .back{display:inline-block;margin-top:16px;padding:8px 12px;border:1px solid #334155;border-radius:8px}
+    .clsTitle{margin:8px 0 6px}
+    .titleRow{display:flex;justify-content:space-between;align-items:center;margin:12px 0 8px}
+    .btn{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:6px 9px;font-size:12px;cursor:pointer}
+    .btn:hover{background:#f7f7f7}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="titleRow">
+    <div>
+      <h1>Détail du dépôt</h1>
+      <div class="badges">
+        <span class="badge">Établissement : <strong><%= depot?.etablissement %></strong></span>
+        <span class="badge">AP : <strong><%= depot?.animateur %></strong></span>
+        <span class="badge">Spécialité : <strong><%= depot?.specialite %></strong></span>
+        <span class="badge">Cycle : <strong><%= depot?.cycle %></strong></span>
+        <span class="badge">Évaluation : <strong><%= depot?.evaluation %></strong></span>
+        <span class="badge">Date dépôt : <strong><%= depot?.dateDepot ? new Date(depot.dateDepot).toLocaleString() : '' %></strong></span>
+      </div>
+      <div class="muted">Classes incluses : <%= (depot?.classes||[]).map(c=>c.nom).join(', ') || '—' %></div>
+    </div>
+    <div>
+      <a class="btn" href="/collecte/toutes">← Retour à la liste</a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Récapitulatif agrégé</h3>
+    <div class="grid">
+      <div class="card">
+        <div class="label">Couverture des heures</div>
+        <div class="value"><%= depot.heures_dues %> dues, <%= depot.heures_faites %> faites
+          <span class="pct"><%= depot.pct && depot.pct.heures!=null ? depot.pct.heures+' %' : '—' %></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Couverture des programmes (leçons)</div>
+        <div class="value"><%= depot.lecons_prevues %> prév., <%= depot.lecons_faites %> faites
+          <span class="pct"><%= depot.pct && depot.pct.lecons!=null ? depot.pct.lecons+' %' : '—' %></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Leçons digitalisées</div>
+        <div class="value"><%= depot.lecons_dig_prevues %> prév., <%= depot.lecons_dig_faites %> faites
+          <span class="pct"><%= depot.pct && depot.pct.lecons_dig!=null ? depot.pct.lecons_dig+' %' : '—' %></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Travaux Pratiques (TP)</div>
+        <div class="value"><%= depot.tp_prevus %> prév., <%= depot.tp_faits %> faits
+          <span class="pct"><%= depot.pct && depot.pct.tp!=null ? depot.pct.tp+' %' : '—' %></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">TP digitalisés</div>
+        <div class="value"><%= depot.tp_dig_prevus %> prév., <%= depot.tp_dig_faits %> faits
+          <span class="pct"><%= depot.pct && depot.pct.tp_dig!=null ? depot.pct.tp_dig+' %' : '—' %></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Réussite des élèves</div>
+        <div class="value"><%= depot.eleves_competents_n %> ont composé, <%= depot.moyenne_ge10_n %> ≥ 10
+          <span class="pct"><%= depot.pct && depot.pct.reussite!=null ? depot.pct.reussite+' %' : '—' %></span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Assiduité / Postes enseignants</div>
+        <div class="value"><%= depot.effectif_ens %> enseignants, <%= depot.en_poste %> en poste
+          <span class="pct"><%= depot.pct && depot.pct.enseignants_poste!=null ? depot.pct.enseignants_poste+' %' : '—' %></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Détail par classe</h3>
+    <% if ((depot.classes||[]).length===0) { %>
+      <div class="card">— Aucun détail classe.</div>
+    <% } %>
+    <% (depot.classes||[]).forEach(function(cl){ %>
+      <h4 class="clsTitle"><%= cl.nom %></h4>
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2" style="text-align:left">Module / Discipline</th>
+            <th colspan="3">Couverture des heures</th>
+            <th colspan="6">Couverture des programmes</th>
+            <th colspan="6">Réalisation des TP</th>
+            <th colspan="3">Réussite des élèves</th>
+            <th colspan="3">Assiduité et ponctualité des enseignants</th>
+          </tr>
+          <tr>
+            <th>Heures dues</th><th>Heures faites</th><th>%</th>
+            <th>Nbre de leçons prévues</th><th>Nbre de leçons faites</th><th>%</th>
+            <th>Nbre de leçons digitalisées prévues</th><th>Nbre de leçons digitalisées faites</th><th>%</th>
+            <th>Nbre prévu</th><th>Nbre fait</th><th>%</th>
+            <th>Nbre digitalisé prévu</th><th>Nbre digitalisé fait</th><th>%</th>
+            <th>Nbre d'élèves ayant composé</th><th>Nbre de moy ≥ 10/20</th><th>% de réussite</th>
+            <th>Effectif des enseignants</th><th>En poste</th><th>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (cl.disciplines||[]).forEach(function(d){ 
+               const pct = (a,b)=> a>0 ? ((b/a)*100).toFixed(2)+' %' : '—';
+          %>
+            <tr>
+              <td style="text-align:left"><%= d.nom %></td>
+              <td><%= d.hD||0 %></td><td><%= d.hF||0 %></td><td><%= pct(d.hD||0,d.hF||0) %></td>
+              <td><%= d.lp||0 %></td><td><%= d.lf||0 %></td><td><%= pct(d.lp||0,d.lf||0) %></td>
+              <td><%= d.ldp||0 %></td><td><%= d.ldf||0 %></td><td><%= pct(d.ldp||0,d.ldf||0) %></td>
+              <td><%= d.tp||0 %></td><td><%= d.tf||0 %></td><td><%= pct(d.tp||0,d.tf||0) %></td>
+              <td><%= d.tdp||0 %></td><td><%= d.tdf||0 %></td><td><%= pct(d.tdp||0,d.tdf||0) %></td>
+              <td><%= d.comp||0 %></td><td><%= d.m10||0 %></td><td><%= pct(d.comp||0,d.m10||0) %></td>
+              <td><%= d.effTot||0 %></td><td><%= d.effPos||0 %></td><td><%= pct(d.effTot||0,d.effPos||0) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% }); %>
+  </div>
+
+  <a class="back" href="/collecte/toutes">← Retour à la liste</a>
+</div>
+</body>
+</html>
+

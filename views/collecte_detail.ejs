@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Détail de la collecte – <%= doc.etablissement %></title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 20px; }
+    h2 { margin-top: 24px; border-bottom: 2px solid #ddd; padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; font-size: 13px; }
+    th { background: #f8f8f8; text-align: left; }
+    .muted { color: #666; font-size: 13px; }
+    .btn-print {
+      display:inline-block; margin:12px 0; padding:8px 14px;
+      background:#005b9a; color:white; border:none; border-radius:4px;
+      cursor:pointer; font-size:14px;
+    }
+    .btn-print:hover { background:#0073c9; }
+  </style>
+</head>
+<body>
+
+  <h1>Détail de la collecte</h1>
+
+  <!-- Bouton Imprimer -->
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimer</button>
+
+  <!-- Bloc infos -->
+  <p>
+    <strong>Établissement :</strong> <%= doc.etablissement %><br/>
+    <strong>Animateur :</strong> <%= doc.animateur %><br/>
+    <strong>Cycle :</strong> <%= doc.cycle %> – <strong>Spécialité :</strong> <%= doc.specialite %><br/>
+    <strong>Évaluation :</strong> <%= doc.evaluation %> – <strong>Année :</strong> <%= doc.annee %><br/>
+    <span class="muted">Déposé le <%= new Date(doc.dateDepot).toLocaleString() %></span>
+  </p>
+
+  <!-- Effectifs -->
+  <h2>Effectifs par classe</h2>
+  <% if (doc.effectifs && doc.effectifs.length) { %>
+    <table>
+      <thead><tr><th>Classe</th><th>Filles</th><th>Garçons</th><th>Total</th></tr></thead>
+      <tbody>
+      <% doc.effectifs.forEach(e => { %>
+        <tr>
+          <td><%= e.classe %></td>
+          <td><%= e.filles %></td>
+          <td><%= e.garcons %></td>
+          <td><%= (e.filles||0) + (e.garcons||0) %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  <% } else { %>
+    <p class="muted">Aucun effectif soumis.</p>
+  <% } %>
+
+  <!-- Personnel -->
+  <h2>Fichier du personnel</h2>
+  <% if (staff && staff.length) { %>
+    <table>
+      <thead>
+        <tr><th>Nom</th><th>Grade</th><th>Matière</th><th>Statut</th><th>Classes</th><th>Disciplines</th><th>Obs.</th></tr>
+      </thead>
+      <tbody>
+      <% staff.forEach(s => { %>
+        <tr>
+          <td><%= s.nom %></td>
+          <td><%= s.grade %></td>
+          <td><%= s.matiere %></td>
+          <td><%= s.statut %></td>
+          <td><%= (s.classes||[]).join(', ') %></td>
+          <td><%= (s.disciplines||[]).join(', ') %></td>
+          <td><%= s.obs %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  <% } else { %>
+    <p class="muted">Aucun fichier du personnel soumis par l’AP.</p>
+  <% } %>
+
+  <!-- Disciplines par classe -->
+  <h2>Données pédagogiques par classe</h2>
+  <% if (classes && classes.length) { %>
+    <% classes.forEach(cl => { %>
+      <h3><%= cl.nom %> — Filles: <%= cl.filles %>, Garçons: <%= cl.garcons %>, Total: <%= (cl.filles||0)+(cl.garcons||0) %></h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Discipline</th>
+            <th>Heures dues</th><th>Heures faites</th>
+            <th>Leçons prévues</th><th>Faites</th>
+            <th>TP prévus</th><th>Faits</th>
+            <th>Élèves comp.</th><th>≥10/20</th>
+          </tr>
+        </thead>
+        <tbody>
+        <% cl.disciplines.forEach(d => { %>
+          <tr>
+            <td><%= d.nom %></td>
+            <td><%= d.hD %></td><td><%= d.hF %></td>
+            <td><%= d.lp %></td><td><%= d.lf %></td>
+            <td><%= d.tp %></td><td><%= d.tf %></td>
+            <td><%= d.comp %></td><td><%= d.m10 %></td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    <% }) %>
+  <% } else { %>
+    <p class="muted">Aucune donnée pédagogique.</p>
+  <% } %>
+
+</body>
+</html>

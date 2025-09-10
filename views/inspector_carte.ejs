@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Carte scolaire — <%= (user?.inspection || '').toUpperCase() %></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{ --bg:#f7f7f9; --ink:#111827; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb; --brand:#0ea5e9; }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--ink)}
+    a{color:inherit;text-decoration:none}
+    header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+    header h1{margin:0;font-size:16px;font-weight:700}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+    .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+    .btn.soft{background:#f1f5f9}
+    .select{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff}
+
+    .layout{display:grid;grid-template-columns:280px 1fr;gap:14px;min-height:calc(100% - 53px)}
+    .sidebar{border-right:1px solid var(--line);background:#fff;display:flex;flex-direction:column;min-height:0}
+    .side-head{padding:10px;border-bottom:1px solid var(--line)}
+    .tree{padding:8px 6px;overflow:auto;flex:1}
+    .node{display:flex;align-items:center;gap:6px;padding:6px;border-radius:8px;cursor:pointer}
+    .node:hover{background:#f4f7fb}
+    .node.active{background:#e8f5ff;border:1px solid #bee3ff}
+    .indent-0{padding-left:0}
+    .indent-1{padding-left:12px}
+    .indent-2{padding-left:24px}
+
+    main{padding:12px;overflow:auto}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+    .muted{color:var(--muted)}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+
+    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .kpi{border:1px dashed var(--line);border-radius:10px;padding:10px;background:#fff}
+    .kpi .label{font-size:12px;color:var(--muted)}
+    .kpi .n{font-weight:700;font-size:20px}
+    .tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin:0 4px 4px 0;font-size:.78rem;background:#f8fafc}
+
+    table{width:100%;border-collapse:collapse;background:#fff}
+    th,td{border:1px solid var(--line);padding:6px 8px;font-size:12px;text-align:right;vertical-align:top}
+    th:first-child, td:first-child{text-align:left}
+    thead th{background:#f8fafc}
+
+    .drawer{position:fixed;right:0;top:0;height:100vh;width:420px;background:#fff;border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(0,0,0,.08);transform:translateX(100%);transition:transform .24s ease;z-index:5;display:flex;flex-direction:column}
+    .drawer.open{transform:translateX(0)}
+    .drawer header{padding:10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+    .drawer .content{padding:12px;overflow:auto;font-size:13px}
+
+    .tools{display:flex;gap:6px;align-items:center}
+    .tools .search{min-width:220px}
+    .tools .count{font-size:12px;color:var(--muted)}
+
+    .pager{display:flex;align-items:center;gap:6px}
+    .pager .btn{padding:4px 8px}
+
+    @media (max-width:1100px){ .kpis{grid-template-columns:repeat(2,1fr);} .layout{grid-template-columns:1fr} }
+    @media print{ header,.sidebar,.actions,.btn,.tools{display:none!important} body{background:#fff} .card{page-break-inside:avoid} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Carte scolaire — <span class="muted"><%= (user?.inspection || '').toUpperCase() %></span></h1>
+    <div class="tabs">
+      <a href="/inspector" class="btn">Synthèse</a>
+      <a href="/inspector/carte" class="btn primary">Carte scolaire</a>
+      <a href="/fichiers" class="btn">Échanges</a>
+      <form action="/auth/logout" method="post" style="display:inline"><button class="btn">Déconnexion</button></form>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- ===== Sidebar ===== -->
+    <aside class="sidebar">
+      <div class="side-head">
+        <div style="font-weight:700">Explorateur</div>
+        <div class="row" style="margin-top:8px">
+          <select id="period" class="select" title="Période">
+            <option value="ann">Annuel</option>
+            <option value="eval">Évaluation…</option>
+            <option value="tri">Trimestre…</option>
+          </select>
+          <select id="selEval" class="select" style="display:none" title="Évaluation">
+            <option value="1">Éval 1</option><option value="2">Éval 2</option>
+            <option value="3">Éval 3</option><option value="4">Éval 4</option>
+            <option value="5">Éval 5</option><option value="6">Éval 6</option>
+          </select>
+          <select id="selTri" class="select" style="display:none" title="Trimestre">
+            <option value="T1">T1 (1+2)</option>
+            <option value="T2">T2 (3+4)</option>
+            <option value="T3">T3 (5+6)</option>
+          </select>
+        </div>
+      </div>
+      <div id="tree" class="tree"><!-- menu --></div>
+    </aside>
+
+    <!-- ===== Centre ===== -->
+    <main>
+      <!-- KPIs -->
+      <div class="card">
+        <div class="row">
+          <strong id="scope">KPIs Annuel — Toute la région</strong>
+          <div class="row actions"><button id="btn-print" class="btn">Imprimer</button></div>
+        </div>
+        <div class="kpis" style="margin-top:8px">
+          <div class="kpi"><div class="label">Établissements</div><div class="n" id="k-etabs">—</div></div>
+          <div class="kpi"><div class="label">AP actifs</div><div class="n" id="k-ap">—</div></div>
+          <div class="kpi"><div class="label">Élèves (∑)</div><div class="n" id="k-eleves">—</div></div>
+          <div class="kpi"><div class="label">Filles / Garçons</div><div class="n"><span id="k-f">—</span> / <span id="k-g">—</span></div></div>
+          <div class="kpi"><div class="label">Ens. totaux</div><div class="n" id="k-eft">—</div></div>
+          <div class="kpi"><div class="label">Ens. en poste</div><div class="n" id="k-efp">—</div></div>
+          <div class="kpi"><div class="label">Classes (uniques)</div><div class="n" id="k-classes">—</div></div>
+          <div class="kpi"><div class="label">Période</div><div class="n" id="k-per">Annuel</div></div>
+        </div>
+        <div id="ap-region" style="margin-top:8px;display:none">
+          <span class="muted">AP (noms) :</span> <span id="ap-list"></span>
+        </div>
+      </div>
+
+      <!-- Contenu dynamique -->
+      <div id="content"><div class="card"><div class="muted">Sélectionne un département ou un établissement à gauche.</div></div></div>
+    </main>
+  </div>
+
+  <!-- Drawer (détails personnel) -->
+  <div id="drawer" class="drawer" aria-hidden="true">
+    <header>
+      <strong id="drawer-title">Fiche agent</strong>
+      <button id="drawer-close" class="btn">Fermer</button>
+    </header>
+    <div class="content" id="drawer-content"></div>
+  </div>
+
+  <script>
+    /* ========== utils ========== */
+    const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+    const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    const fmt = (n)=> (n===0 || Number.isFinite(Number(n))) ? Number(n).toLocaleString() : '—';
+    const toCSV=(rows,headers)=>headers.join(',')+'\n'+rows.map(r=>headers.map(h=>`"${String(r[h]??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const download=(name,content,type='text/csv')=>{const b=new Blob([content],{type});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);};
+    const api = async (path)=>{ const r=await fetch(path,{credentials:'same-origin'}); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); };
+    const qs=(o)=>new URLSearchParams(o||{}).toString();
+    const encMeta=(m)=>encodeURIComponent(JSON.stringify(m||{}));
+    const decMeta=(s)=>{try{return JSON.parse(decodeURIComponent(s||'%7B%7D'))}catch(_){return {}}};
+
+    // CSV registry
+    let CSV_JOBS=[]; const resetCSVJobs=()=>{CSV_JOBS=[]};
+    const registerCSV=(name,headers,rows)=>{const id=CSV_JOBS.length; CSV_JOBS.push({name,headers,rows}); return id;};
+    const csvBtn=(name,headers,rows)=>`<button class="btn soft btn-csv" data-csv="${registerCSV(name,headers,rows)}">Export CSV</button>`;
+    document.addEventListener('click',(e)=>{ const b=e.target.closest('.btn-csv'); if(!b) return;
+      const job=CSV_JOBS[Number(b.dataset.csv)]; if(!job) return;
+      const csv=toCSV(job.rows, job.headers); download(job.name, csv);
+    });
+
+    // Impression de section
+    function printSection(html, title='Section'){
+      const w = window.open('', '_blank');
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
+        <style>
+          body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:16px}
+          table{width:100%;border-collapse:collapse}
+          th,td{border:1px solid #e5e7eb;padding:6px 8px;font-size:12px;text-align:right}
+          th:first-child,td:first-child{text-align:left}
+          thead th{background:#f8fafc}
+          h1{font-size:16px;margin:0 0 10px 0}
+        </style></head><body><h1>${esc(title)}</h1>${html}</body></html>`);
+      w.document.close(); w.focus(); w.print();
+    }
+
+    // période
+    const period=$('#period'), selEval=$('#selEval'), selTri=$('#selTri');
+    const periodQS=()=> period.value==='eval' ? {evaluation:selEval.value} : (period.value==='tri'?{trimestre:selTri.value}:{});
+    const periodLabel=()=> period.value==='eval' ? `Évaluation ${selEval.value}` : (period.value==='tri'?selTri.value:'Annuel');
+    period.onchange=()=>{ selEval.style.display=period.value==='eval'?'inline-block':'none'; selTri.style.display=period.value==='tri'?'inline-block':'none'; buildTreeAndRender(); };
+    selEval.onchange=()=> buildTreeAndRender();
+    selTri .onchange=()=> buildTreeAndRender();
+
+    // API carte
+    const loadCarte = (filter)=> api('/api/carte/inspection?'+qs({ ...(filter||{}), ...periodQS() }));
+    const loadEtab  = (etab)=> api('/api/carte/etab?'+qs({ etablissement: etab }));
+    const loadRegionStaff = (dept)=> api('/api/carte/region-staff?'+qs(dept?{departement:dept}:{}) );
+
+    // KPI
+    function renderKPIs(region){
+      $('#k-etabs').textContent = fmt(region?.etablissements);
+      $('#k-ap').textContent    = fmt(region?.apActifs);
+      $('#k-eleves').textContent= fmt(region?.eleves);
+      $('#k-f').textContent     = fmt(region?.filles);
+      $('#k-g').textContent     = fmt(region?.garcons);
+      $('#k-eft').textContent   = fmt(region?.enseignantsTotaux);
+      $('#k-efp').textContent   = fmt(region?.enseignantsEnPoste);
+      const classesCount =
+  Array.isArray(region?.classesOuvertes) ? region.classesOuvertes.length :
+  (Number.isFinite(region?.classesOuvertes) ? Number(region.classesOuvertes) :
+  (Array.isArray(region?.classes) ? region.classes.length :
+  Number(region?.classes || 0)));
+$('#k-classes').textContent = fmt(classesCount);
+      $('#k-per').textContent   = periodLabel();
+      const apBox=$('#ap-region'), list=$('#ap-list');
+      if (region?.apNoms?.length){ apBox.style.display=''; list.innerHTML=region.apNoms.map(n=>`<span class="tag">${esc(n)}</span>`).join(''); }
+      else { apBox.style.display='none'; list.innerHTML=''; }
+    }
+
+    /* ========== Explorateur gauche ========== */
+    const tree=$('#tree'); let _cacheCarte=null;
+    function nodeHtml(id,label,indent,active,meta){
+      return `<div class="node indent-${indent} ${active?'active':''}" data-id="${esc(id)}" data-meta="${encMeta(meta)}">${esc(label)}</div>`;
+    }
+    async function buildTree(){
+      const data = await loadCarte(); _cacheCarte = data;
+      tree.innerHTML = nodeHtml('region','🌍 Toute la région',0,true,{type:'region'});
+      (data.explorer?.depts||[]).forEach(d=>{
+        tree.insertAdjacentHTML('beforeend', nodeHtml(`dept:${d.key}`, d.label||d.key, 1, false, {type:'dept', dept:d.key}));
+        (d.etabs||[]).forEach(e=>{
+          tree.insertAdjacentHTML('beforeend', nodeHtml(`etab:${d.key}:${e}`, '• '+e, 2, false, {type:'etab', etab:e, dept:d.key}));
+        });
+      });
+      tree.onclick = (ev)=>{
+        const el=ev.target.closest('.node'); if(!el) return;
+        $$('.node').forEach(n=>n.classList.remove('active')); el.classList.add('active');
+        const meta = decMeta(el.dataset.meta);
+        renderCenter(meta);
+      };
+    }
+    async function buildTreeAndRender(){
+      await buildTree();
+      await renderCenter({type:'region'});
+      const root=tree.querySelector('.node'); if(root){ $$('.node').forEach(n=>n.classList.remove('active')); root.classList.add('active'); }
+    }
+
+    // ===== Helpers tableaux (recherche + pagination + actions)
+    function makeTools(tableId, title, csvJob){
+      return `
+        <div class="tools" data-for="${esc(tableId)}">
+          ${csvJob||''}
+          <button class="btn soft btn-print-section" data-for="${esc(tableId)}">Imprimer section</button>
+          <input class="select search" placeholder="Rechercher…" data-for="${esc(tableId)}" />
+          <div class="pager" data-for="${esc(tableId)}">
+            <select class="select pagesize" data-for="${esc(tableId)}">
+              <option>10</option><option>25</option><option>50</option><option>100</option>
+            </select>
+            <span class="count">0 ligne(s) — page 1/1</span>
+            <button class="btn soft prev">‹</button>
+            <button class="btn soft next">›</button>
+          </div>
+        </div>`;
+    }
+
+    function attachSectionActions(wrapper, title){
+      // impression section
+      wrapper.querySelector('.btn-print-section')?.addEventListener('click', ()=>{
+        const table = wrapper.querySelector('table');
+        if(table) printSection(table.outerHTML, title);
+      });
+    }
+
+    function paginateTable(wrapper){
+      const table = wrapper.querySelector('table'); if(!table) return;
+      const body = table.tBodies[0]; if(!body) return;
+      const allRows = Array.from(body.rows).map(tr => tr.cloneNode(true));
+
+      const tools = wrapper.querySelector('.tools');
+      const search = tools?.querySelector('.search');
+      const pager  = tools?.querySelector('.pager');
+      const sizeSel= tools?.querySelector('.pagesize');
+      const cnt    = tools?.querySelector('.count');
+      const prev   = pager?.querySelector('.prev');
+      const next   = pager?.querySelector('.next');
+
+      let q='', page=1, size= Number(sizeSel?.value||10);
+
+      function apply(){
+        // filtre
+        const rows = allRows.filter(tr=>{
+          if(!q) return true;
+          const txt = tr.innerText.toLowerCase();
+          return txt.includes(q);
+        });
+        // pagination
+        const pages = Math.max(1, Math.ceil(rows.length/size));
+        if(page>pages) page=pages;
+        const start=(page-1)*size, end=start+size;
+        body.innerHTML='';
+        rows.slice(start,end).forEach(r=>body.appendChild(r.cloneNode(true)));
+        if(cnt) cnt.textContent = `${rows.length} ligne(s) — page ${page}/${pages}`;
+      }
+      search?.addEventListener('input', (e)=>{ q=String(e.target.value||'').toLowerCase().trim(); page=1; apply(); });
+      sizeSel?.addEventListener('change',(e)=>{ size=Number(e.target.value||10); page=1; apply(); });
+      prev?.addEventListener('click', ()=>{ if(page>1){ page--; apply(); }});
+      next?.addEventListener('click', ()=>{ const rows = allRows.filter(tr=>!q || tr.innerText.toLowerCase().includes(q)); const pages=Math.max(1,Math.ceil(rows.length/size)); if(page<pages){ page++; apply(); }});
+      apply();
+    }
+
+    // ======== Centre : 3 modes (région / département / établissement)
+    const content = $('#content');
+
+    function tbl(html, title, actionsHtml='', idHint=''){
+      const tableId = idHint || ('tbl-'+Math.random().toString(36).slice(2,8));
+      const wrap = `
+        <div class="card section" id="${tableId}-wrap">
+          <div class="row">
+            <strong>${title}</strong>
+            <div class="tools-slot">${makeTools(tableId, title, actionsHtml)}</div>
+          </div>
+          <div class="tablezone" data-table="${tableId}" style="overflow:auto;max-height:60vh">${html}</div>
+        </div>`;
+      return wrap;
+    }
+
+    async function renderRegion(data){
+      resetCSVJobs();
+      renderKPIs(data.region||{});
+      $('#scope').textContent = `KPIs ${periodLabel()} — Toute la région`;
+
+      // Par département
+      const rows = data.byDept || [];
+      const h1 = `<table id="tbl-dept"><thead>
+        <tr><th>Département</th><th>Établissements</th><th>AP #</th><th>AP (noms)</th><th>Élèves</th><th>Filles</th><th>Garçons</th><th>Ens. totaux</th><th>En poste</th><th>Classes (#)</th></tr>
+      </thead><tbody>${
+        rows.map(d=>`<tr>
+          <td>${esc(d.departement||'—')}</td>
+          <td>${fmt(d.etablissements)}</td>
+          <td>${fmt(d.apActifs)}</td>
+          <td>${esc((d.apNoms||[]).slice(0,6).join(', '))}${(d.apNoms?.length>6?' …':'')}</td>
+          <td>${fmt(d.eleves)}</td><td>${fmt(d.filles)}</td><td>${fmt(d.garcons)}</td>
+          <td>${fmt(d.enseignantsTotaux)}</td><td>${fmt(d.enseignantsEnPoste)}</td>
+          <td>${fmt(Array.isArray(d.classesOuvertes)?d.classesOuvertes.length:0)}</td>
+        </tr>`).join('')
+      }</tbody></table>`;
+      const flat1 = rows.map(d=>({
+        departement:d.departement, etablissements:d.etablissements, apActifs:d.apActifs,
+        apNoms:(d.apNoms||[]).join(' / '), eleves:d.eleves, filles:d.filles, garcons:d.garcons,
+        enseignantsTotaux:d.enseignantsTotaux, enseignantsEnPoste:d.enseignantsEnPoste,
+        classesOuvertes:Array.isArray(d.classesOuvertes)?d.classesOuvertes.length:0
+      }));
+      const actions1 = csvBtn('region_par_departement.csv',
+        ['departement','etablissements','apActifs','apNoms','eleves','filles','garcons','enseignantsTotaux','enseignantsEnPoste','classesOuvertes'],
+        flat1
+      );
+
+      // Classes agrégées
+      const cRows = data.classesAgg || [];
+      const h2 = `<table id="tbl-classes"><thead><tr><th>Classe</th><th>Filles</th><th>Garçons</th><th>Total</th></tr></thead>
+        <tbody>${cRows.map(r=>`<tr><td>${esc(r.classe)}</td><td>${fmt(r.filles)}</td><td>${fmt(r.garcons)}</td><td>${fmt(r.total)}</td></tr>`).join('')}</tbody></table>`;
+      const actions2 = csvBtn('effectifs_par_classe_region.csv', ['classe','filles','garcons','total'], cRows);
+
+      // Établissements (région)
+      const eRows = data.rows || [];
+      const h3 = `<table id="tbl-etabs"><thead>
+        <tr><th>Établissement</th><th>Département</th><th>Cycles</th><th>Classes ouvertes (#)</th><th>AP</th><th>Dépôts (reçus/attendus)</th><th>Élèves</th><th>Filles</th><th>Garçons</th></tr>
+      </thead><tbody>${
+        eRows.map(r=>`<tr>
+          <td>${esc(r.etablissement)}</td>
+          <td>${esc(r.departement||'')}</td>
+          <td>${esc((r.cyclesOuverts||[]).join(' / '))}</td>
+          <td>${fmt(Array.isArray(r.classesOuvertes)?r.classesOuvertes.length:0)}</td>
+          <td>${esc((r.apList||[]).join(' / '))}</td>
+          <td>${fmt((r.depots||[]).length)} / 6</td>
+          <td>${fmt(r.eleves)}</td><td>${fmt(r.filles)}</td><td>${fmt(r.garcons)}</td>
+        </tr>`).join('')
+      }</tbody></table>`;
+      const flat3 = eRows.map(r=>({
+        etablissement:r.etablissement, departement:r.departement,
+        cycles:(r.cyclesOuverts||[]).join(' / '),
+        classesOuvertes:Array.isArray(r.classesOuvertes)?r.classesOuvertes.length:0,
+        ap:(r.apList||[]).join(' / '),
+        depotsRecus:(r.depots||[]).length, depotsAttendus:6,
+        eleves:r.eleves, filles:r.filles, garcons:r.garcons
+      }));
+      const actions3 = csvBtn('etablissements_region.csv',
+        ['etablissement','departement','cycles','classesOuvertes','ap','depotsRecus','depotsAttendus','eleves','filles','garcons'],
+        flat3
+      );
+
+      // Fichier du personnel (région)
+      const staffData = await loadRegionStaff();
+      const sRows = staffData?.rows || [];
+      const tStaff = tableStaff(sRows);
+      const staffHeaders = Array.from(sRows.reduce((s,o)=>{Object.keys(o||{}).forEach(k=>s.add(k));return s;}, new Set()));
+      const actionsStaff = csvBtn('personnel_region.csv', staffHeaders, sRows);
+
+      content.innerHTML = [
+        tbl(h1, 'Région — Synthèse par département', actions1, 'sec-dept'),
+        tbl(h2, 'Région — Effectifs agrégés par classe', actions2, 'sec-classes'),
+        tbl(h3, 'Région — Établissements', actions3, 'sec-etabs'),
+        tbl(tStaff, 'Région — Fichier du personnel', actionsStaff, 'sec-staff')
+      ].join('');
+
+      // Activer outils + pagination
+      $$('.section').forEach(sec=>{
+        attachSectionActions(sec, sec.querySelector('strong')?.innerText||'Section');
+        paginateTable(sec);
+      });
+    }
+
+    function tableStaff(rows){
+      if(!rows?.length) return `<div class="muted">Aucun agent trouvé.</div>`;
+      const prefer=['nom','sexe','discipline','grade','statut','poste','matricule','dateAffectation','etablissement','departement','matiere','classes','disciplines','obs','telephone','email'];
+      const allKeys = Array.from(rows.reduce((s,o)=>{Object.keys(o||{}).forEach(k=>s.add(k));return s;}, new Set()));
+      const cols = [...prefer.filter(k=>allKeys.includes(k)), ...allKeys.filter(k=>!prefer.includes(k))].slice(0,12);
+      const thead = `<thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>`;
+      const tbody = `<tbody>${
+        rows.map(r=>`<tr class="staff-row" data-json="${encMeta(r)}">${
+          cols.map(c=>`<td>${esc(r?.[c]??'')}</td>`).join('')
+        }</tr>`).join('')
+      }</tbody>`;
+      return `<table id="tbl-staff">${thead}${tbody}</table>`;
+    }
+
+    async function renderDept(data, deptKey){
+      resetCSVJobs();
+      renderKPIs(data.region||{});
+      $('#scope').textContent = `KPIs ${periodLabel()} — Département ${deptKey}`;
+      const eRows = data.rows || [];
+      const cRows = data.classesAgg || [];
+
+      const t1 = `<table><thead>
+        <tr><th>Établissement</th><th>Cycles</th><th>Classes ouvertes (#)</th><th>AP</th><th>Dépôts (reçus/attendus)</th><th>Élèves</th><th>Filles</th><th>Garçons</th></tr>
+      </thead><tbody>${
+        eRows.map(r=>`<tr>
+          <td>${esc(r.etablissement)}</td>
+          <td>${esc((r.cyclesOuverts||[]).join(' / '))}</td>
+          <td>${fmt(Array.isArray(r.classesOuvertes)?r.classesOuvertes.length:0)}</td>
+          <td>${esc((r.apList||[]).join(' / '))}</td>
+          <td>${fmt((r.depots||[]).length)} / 6</td>
+          <td>${fmt(r.eleves)}</td><td>${fmt(r.filles)}</td><td>${fmt(r.garcons)}</td>
+        </tr>`).join('')
+      }</tbody></table>`;
+      const flatE = eRows.map(r=>({
+        etablissement:r.etablissement,
+        cycles:(r.cyclesOuverts||[]).join(' / '),
+        classesOuvertes:Array.isArray(r.classesOuvertes)?r.classesOuvertes.length:0,
+        ap:(r.apList||[]).join(' / '),
+        depotsRecus:(r.depots||[]).length, depotsAttendus:6,
+        eleves:r.eleves, filles:r.filles, garcons:r.garcons
+      }));
+      const actions1 = csvBtn(`etablissements_${deptKey}.csv`,
+        ['etablissement','cycles','classesOuvertes','ap','depotsRecus','depotsAttendus','eleves','filles','garcons'],
+        flatE
+      );
+
+      const t2 = `<table><thead><tr><th>Classe</th><th>Filles</th><th>Garçons</th><th>Total</th></tr></thead>
+        <tbody>${cRows.map(r=>`<tr><td>${esc(r.classe)}</td><td>${fmt(r.filles)}</td><td>${fmt(r.garcons)}</td><td>${fmt(r.total)}</td></tr>`).join('')}</tbody></table>`;
+      const actions2 = csvBtn(`effectifs_${deptKey}.csv`, ['classe','filles','garcons','total'], cRows);
+
+      const staffData = await loadRegionStaff(deptKey);
+      const sRows = staffData?.rows || [];
+      const t3 = tableStaff(sRows);
+      const staffHeaders = Array.from(sRows.reduce((s,o)=>{Object.keys(o||{}).forEach(k=>s.add(k));return s;}, new Set()));
+      const actions3 = csvBtn(`personnel_${deptKey}.csv`, staffHeaders, sRows);
+
+      content.innerHTML = [
+        tbl(t1, `Département ${esc(deptKey)} — Établissements`, actions1, 'd-etabs'),
+        tbl(t2, `Département ${esc(deptKey)} — Effectifs par classe`, actions2, 'd-classes'),
+        tbl(t3, `Département ${esc(deptKey)} — Fichier du personnel`, actions3, 'd-staff')
+      ].join('');
+
+      $$('.section').forEach(sec=>{
+        attachSectionActions(sec, sec.querySelector('strong')?.innerText||'Section');
+        paginateTable(sec);
+      });
+
+      attachStaffRowDrawer();
+    }
+
+    function tableClasses(rows){
+      if(!rows?.length) return `<div class="muted">Aucune classe déclarée.</div>`;
+      return `<table><thead><tr><th>Classe</th><th>Filles</th><th>Garçons</th><th>Total</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr><td>${esc(r.classe)}</td><td>${fmt(r.filles)}</td><td>${fmt(r.garcons)}</td><td>${fmt(r.total??((r.filles||0)+(r.garcons||0)))}</td></tr>`).join('')}</tbody></table>`;
+    }
+
+    function tableDepots(rows, attendu){
+      const totalRecus = rows?.length||0;
+      const t = `<table><thead><tr><th>#</th><th>Période</th><th>Type</th><th>Date dépôt</th><th>Auteur</th><th>Statut</th></tr></thead>
+        <tbody>${
+          (rows||[]).map((d,i)=>`<tr>
+            <td>${i+1}</td>
+            <td>${esc(d?.trimestre||d?.evaluation||'')}</td>
+            <td>${esc(d?.type||'Collecte')}</td>
+            <td>${esc(d?.date||'')}</td>
+            <td>${esc(d?.auteur||d?.ap||'')}</td>
+            <td>${d?.complet===false?'Incomplet':'Complet'}</td>
+          </tr>`).join('')
+        }</tbody></table>`;
+      const head = `<div class="row"><div><span class="tag">Reçus: ${fmt(totalRecus)}</span> <span class="tag">Attendus: ${fmt(attendu||0)}</span></div></div>`;
+      return head + t;
+    }
+
+    async function renderEtab(data, etabName, deptKey){
+      resetCSVJobs();
+      const R = data || {};
+
+      // ===== KPIs établissement (corrigé) =====
+      const classes = R.effectifs || [];
+      const filles = classes.reduce((s,c)=>s+(Number(c.filles)||0),0);
+      const garcons= classes.reduce((s,c)=>s+(Number(c.garcons)||0),0);
+      const eleves = filles + garcons;
+      const staff  = Array.isArray(R.staff)?R.staff:[];
+      const apList = Array.isArray(R.ap)?R.ap:[];
+      const KPIs = {
+        etablissements: 1,
+        apActifs: apList.length,
+        apNoms: apList,
+        filles, garcons, eleves,
+        enseignantsTotaux: staff.length,
+        // Heuristique simple : statut contient "enseign" ou "poste" => en poste
+        enseignantsEnPoste: staff.filter(s=>/enseign|poste/i.test(String(s.statut||''))).length,
+        classesOuvertes: Array.isArray(R.classesOuvertes)?R.classesOuvertes.length:classes.length
+      };
+      renderKPIs(KPIs);
+      $('#scope').textContent = `KPIs ${periodLabel()} — ${etabName}${deptKey?(' ('+deptKey+')'):''}`;
+
+      const info = `
+        <div class="row" style="margin-bottom:8px">
+          <div>
+            <div style="font-weight:700;font-size:15px">${esc(etabName)}</div>
+            <div class="muted">
+              Département : ${esc(R.meta?.departement||deptKey||'—')}
+              &nbsp;•&nbsp; Cycle : ${esc(R.meta?.cycle||'—')}
+              &nbsp;•&nbsp; Spécialité : ${esc(R.meta?.specialite||'—')}
+            </div>
+          </div>
+          <div>
+            ${apList.length?`<span class="tag">AP : ${esc(apList.join(' / '))}</span>`:''}
+            <span class="tag">Dépôts attendus : ${fmt(R.depots?.totalExpected||0)}</span>
+            <span class="tag">Reçus : ${fmt(R.depots?.received?.length||0)}</span>
+          </div>
+        </div>`;
+
+      const tClasses = tableClasses(classes);
+      const rowsClasses = classes.map(r=>({classe:r.classe,filles:r.filles,garcons:r.garcons,total:r.total??((r.filles||0)+(r.garcons||0))}));
+      const actionsClasses = csvBtn(`classes_${etabName}.csv`, ['classe','filles','garcons','total'], rowsClasses);
+
+      const tStaff = tableStaff(staff);
+      const staffHeaders = Array.from(staff.reduce((s,o)=>{Object.keys(o||{}).forEach(k=>s.add(k));return s;}, new Set()));
+      const actionsStaff = csvBtn(`personnel_${etabName}.csv`, staffHeaders, staff);
+
+      const depots = (R.depots?.received||[]).map(d=>({ evaluation:d.evaluation, date:new Date(d.createdAt).toLocaleDateString(), auteur:apList.join(', ')||'' }));
+      const tDepots = tableDepots(depots, R.depots?.totalExpected);
+      const depHeaders = Array.from(depots.reduce((s,o)=>{Object.keys(o||{}).forEach(k=>s.add(k));return s;}, new Set()));
+      const actionsDepots = csvBtn(`depots_${etabName}.csv`, depHeaders, depots);
+
+      content.innerHTML = [
+        `<div class="card">${info}</div>`,
+        tbl(tClasses, `Établissement — Effectifs par classe`, actionsClasses, 'e-classes'),
+        tbl(tStaff, `Établissement — Fichier du personnel`, actionsStaff, 'e-staff'),
+        tbl(tDepots, `Établissement — Historique des dépôts`, actionsDepots, 'e-depots')
+      ].join('');
+
+      $$('.section').forEach(sec=>{
+        attachSectionActions(sec, sec.querySelector('strong')?.innerText||'Section');
+        paginateTable(sec);
+      });
+
+      attachStaffRowDrawer();
+    }
+
+    function attachStaffRowDrawer(){
+      const drawer=$('#drawer'), close=$('#drawer-close'), body=$('#drawer-content'), title=$('#drawer-title');
+      close.onclick=()=>{drawer.classList.remove('open');drawer.setAttribute('aria-hidden','true');};
+      $$('#content .staff-row').forEach(tr=>{
+        tr.onclick=()=>{
+          const data=decMeta(tr.dataset.json);
+          title.textContent = data?.nom?`Fiche — ${data.nom}`:'Fiche agent';
+          body.innerHTML = Object.keys(data||{}).length
+            ? `<table><tbody>${
+                Object.entries(data).map(([k,v])=>`<tr><th style="text-align:left;padding:4px 8px;border:1px solid var(--line);background:#f8fafc">${esc(k)}</th><td style="border:1px solid var(--line);padding:4px 8px">${esc(v)}</td></tr>`).join('')
+              }</tbody></table>`
+            : '<div class="muted">Aucun détail.</div>';
+          drawer.classList.add('open'); drawer.setAttribute('aria-hidden','false');
+        };
+      });
+    }
+
+    // ===== Router central (région / département / établissement)
+    async function renderCenter(meta){
+      try{
+        content.innerHTML = `<div class="card"><div class="muted">Chargement…</div></div>`;
+
+        if (!meta || !meta.type || meta.type === 'region') {
+          return await renderRegion(_cacheCarte || {});
+        }
+
+        if (meta.type === 'dept') {
+          const deptKey = meta.dept || '—';
+          const all = _cacheCarte || {};
+          const eRows = (all.rows || []).filter(r => (r.departement || '—') === deptKey);
+          const sub = { region: all.region || {}, rows: eRows, classesAgg: [] };
+          return await renderDept(sub, deptKey);
+        }
+
+        if (meta.type === 'etab') {
+          const etab = meta.etab || '';
+          const dept = meta.dept || '';
+          if (!etab) {
+            content.innerHTML = `<div class="card"><div class="muted">Établissement invalide.</div></div>`;
+            return;
+          }
+          const data = await loadEtab(etab);
+          return await renderEtab(data, etab, dept);
+        }
+
+        content.innerHTML = `<div class="card"><div class="muted">Sélection invalide.</div></div>`;
+      }catch(err){
+        console.error(err);
+        content.innerHTML = `<div class="card"><div class="muted" style="color:#c00">Erreur : ${err?.message||err}</div></div>`;
+      }
+    }
+
+    // ===== Impression globale
+    $('#btn-print').onclick=()=>window.print();
+
+    // ===== Démarrage
+    window.addEventListener('DOMContentLoaded', buildTreeAndRender);
+  </script>
+</body>
+</html>

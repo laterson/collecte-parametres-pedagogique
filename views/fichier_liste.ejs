@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>Documents partagés</title>
+<style>
+  :root{--bg:#f7f7f7;--b:#cfd4da;--th:#eef1f4;--ink:#1f2937;--muted:#6b7280;--brand:#2563eb}
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);margin:0;color:var(--ink)}
+  a{color:var(--brand);text-decoration:none}
+  .wrap{padding:18px;max-width:1200px;margin:0 auto}
+  h1{margin:0 0 8px;display:flex;gap:10px;align-items:center}
+  .muted{color:var(--muted)}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .btn{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:7px 10px;font-size:13px;cursor:pointer}
+  .btn:hover{background:#f7f7f7}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:#fff;border:1px solid var(--b);border-radius:10px;padding:12px}
+  .card h3{margin:0 0 8px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border:1px solid var(--b);padding:6px 8px;text-align:left;vertical-align:middle}
+  th{background:var(--th)}
+  .right{display:flex;gap:8px;align-items:center}
+  .actbar{display:flex;gap:6px;justify-content:flex-end}
+  .actbar a,.actbar button{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer}
+  .actbar button.danger{border-color:#fca5a5}
+  .pill{display:inline-block;border:1px solid #e5e7eb;border-radius:999px;padding:2px 8px;margin-left:6px;background:#f9fafb;font-size:12px}
+  .footer{margin-top:16px;display:flex;justify-content:space-between;align-items:center}
+  @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>📎 Documents partagés
+        <span class="pill"><%= (user.inspection||'').toUpperCase() %></span>
+        <% if(user.role!=='insp'){ %><span class="pill">Spécialité: <%= user.specialite||'—' %></span><% } %>
+      </h1>
+      <div class="muted">
+        Connecté : <strong><%= user.nom %></strong> — <em><%= user.etab %></em>
+        • Rôle : <%= user.role %>
+      </div>
+    </div>
+    <div class="right">
+      <a class="btn" href="/collecte/nouvelle">← Retour tableau de bord</a>
+      <button id="btnRefresh" class="btn">↻ Actualiser</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h3>De mon inspection (tous les AP de <%= (user.inspection||'').toUpperCase() %>)</h3>
+      <table>
+        <thead><tr><th>Nom</th><th style="width:120px">Taille</th><th style="width:180px">Modifié</th><th style="width:160px;text-align:right">Actions</th></tr></thead>
+        <tbody id="tbodyAp"><tr><td colspan="4" class="muted">Chargement…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h3>Partagés par l’IPR — spécialité <b><%= user.specialite||'—' %></b></h3>
+      <div class="muted" style="margin:-6px 0 6px">Les documents IPR sont visibles uniquement par les AP de la même spécialité.</div>
+      <table>
+        <thead><tr><th>Nom</th><th style="width:120px">Taille</th><th style="width:180px">Modifié</th><th style="width:160px;text-align:right">Actions</th></tr></thead>
+        <tbody id="tbodyInsp"><tr><td colspan="4" class="muted">Chargement…</td></tr></tbody>
+      </table>
+    </section>
+  </div>
+
+  <div class="footer">
+    <div class="muted">Astuce : déposez vos fichiers depuis le bloc “Déposer des documents” du tableau de bord.</div>
+    <form action="/auth/logout" method="post" style="margin:0"><button class="btn">↩ Déconnexion</button></form>
+  </div>
+</div>
+
+<script>
+  const CURRENT = {
+    inspection: "<%= user.inspection||'' %>",
+    specialite: "<%= user.specialite||'' %>",
+    role: "<%= user.role||'' %>"
+  };
+
+  function formatSize(bytes){
+    if(!bytes || bytes<=0) return '—';
+    const kb = bytes/1024, mb = kb/1024;
+    return mb >= 1 ? (mb.toFixed(2)+' Mo') : (Math.max(1,Math.round(kb))+' Ko');
+  }
+  function formatDate(v){ try{ return new Date(v).toLocaleString('fr-FR'); }catch(_){ return '—'; } }
+
+  const tbodyAp   = document.getElementById('tbodyAp');
+  const tbodyInsp = document.getElementById('tbodyInsp');
+
+  async function loadFiles(){
+    try{
+      const q = new URLSearchParams({
+        inspection: CURRENT.inspection||'',
+        specialite: CURRENT.specialite||''
+      }).toString();
+      const r = await fetch('/fichiers/list?'+q, {credentials:'same-origin'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const list = await r.json();
+
+      const ap   = (list||[]).filter(f => f.scope==='ap');
+      const insp = (list||[]).filter(f => f.scope==='insp');
+
+      const row = f => `<tr>
+        <td style="word-break:break-all">${f.name}</td>
+        <td>${formatSize(f.size)}</td>
+        <td>${formatDate(f.mtime)}</td>
+        <td>
+          <div class="actbar">
+            <a href="${f.url}" target="_blank">⬇️ Télécharger</a>
+            ${
+              (CURRENT.role==='insp' || f.scope==='ap')
+              ? `<button class="danger" data-del="${encodeURIComponent(f.name)}" data-scope="${f.scope}" data-spec="${encodeURIComponent(f.specialite||'')}">🗑 Supprimer</button>`
+              : `<button disabled title="Suppression non autorisée">🗑</button>`
+            }
+          </div>
+        </td>
+      </tr>`;
+
+      const sortDesc = arr => arr.sort((a,b) => new Date(b.mtime||0)-new Date(a.mtime||0));
+      tbodyAp.innerHTML   = ap.length   ? sortDesc(ap).map(row).join('')   : `<tr><td colspan="4" class="muted">Aucun document.</td></tr>`;
+      tbodyInsp.innerHTML = insp.length ? sortDesc(insp).map(row).join('') : `<tr><td colspan="4" class="muted">Aucun document d’IPR pour cette spécialité.</td></tr>`;
+      bindDeletes();
+    }catch(e){
+      tbodyAp.innerHTML = tbodyInsp.innerHTML = `<tr><td colspan="4" style="color:#b91c1c">Erreur: ${e.message}</td></tr>`;
+    }
+  }
+
+  async function deleteOne(name, scope, spec){
+    if(!name) return;
+    if(!confirm(`Supprimer « ${name} » ?`)) return;
+    try{
+      const r = await fetch('/fichiers/delete', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          name, scope,
+          inspection: CURRENT.inspection||'',
+          specialite: spec||''
+        })
+      });
+      const data = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(data?.error||'Suppression impossible');
+      await loadFiles();
+    }catch(e){ alert(e.message); }
+  }
+
+  function bindDeletes(){
+    document.querySelectorAll('button[data-del]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        deleteOne(
+          decodeURIComponent(btn.getAttribute('data-del')),
+          btn.getAttribute('data-scope'),
+          decodeURIComponent(btn.getAttribute('data-spec')||'')
+        );
+      });
+    });
+  }
+
+  document.getElementById('btnRefresh').addEventListener('click', loadFiles);
+  loadFiles();
+</script>
+</body>
+</html>
+
+
+
+
+

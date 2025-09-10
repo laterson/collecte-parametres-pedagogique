@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>Administrateur – Gestion & Référentiel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{--c1:#0b5cab;--c2:#0078d4;--bg:#f6f7fb;--ink:#0f172a;--muted:#64748b;--bd:#e5e7eb}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink)}
+  header{background:linear-gradient(90deg,var(--c1),var(--c2));color:#fff;padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between}
+  header h1{margin:0;font-size:1.2rem}
+  header small{opacity:.9}
+  header .nav{display:flex;gap:8px;align-items:center}
+  header a.btn, header button.btn{color:#fff;border:1px solid #ffffff55;background:transparent}
+  main{max-width:1300px;margin:24px auto;padding:0 16px;display:grid;gap:18px}
+  .card{background:#fff;border-radius:12px;box-shadow:0 10px 22px -14px #0003;padding:16px}
+  .card h2{margin:0 0 12px;color:var(--c1);font-size:1.06rem}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+  .toolbar .right{margin-left:auto;display:flex;gap:10px;align-items:center}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:220px}
+  label{display:block;font-size:.88rem}
+  input,select,textarea{width:100%;margin-top:6px;padding:8px 9px;border:1px solid var(--bd);border-radius:8px;background:#fff;font-size:.92rem}
+  textarea{min-height:120px;font-family:ui-monospace, Menlo, Consolas, monospace}
+  .btn{cursor:pointer;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:#fff}
+  .btn.primary{background:var(--c1);border-color:var(--c1);color:#fff}
+  .btn.warn{border-color:#d97706;color:#d97706}
+  .btn.danger{border-color:#dc2626;color:#dc2626}
+  .btn.ghost{background:transparent}
+  .muted{color:var(--muted)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.78rem}
+  .badge.role-anim{background:#eff6ff;color:#1d4ed8}
+  .badge.role-insp{background:#ecfdf5;color:#047857}
+  .badge.role-admin{background:#fef3c7;color:#b45309}
+  .table-wrap{border:1px solid var(--bd);border-radius:10px;background:#fff;overflow:auto;max-height:60vh;box-shadow:0 6px 16px -10px #0002}
+  table{width:100%;border-collapse:separate;border-spacing:0}
+  thead th{position:sticky;top:0;background:#f8fbff;color:#0b5cab;font-weight:600;border-bottom:1px solid var(--bd);z-index:1}
+  th,td{padding:10px;border-bottom:1px solid var(--bd);text-align:center;font-size:.9rem;vertical-align:middle;white-space:nowrap}
+  tr:nth-child(odd) td{background:#fcfdff}
+  tr:last-child td{border-bottom:none}
+  .th-sort{cursor:pointer;user-select:none}
+  .th-sort .arrow{margin-left:6px;font-size:.8rem;opacity:.7}
+  .actions{display:flex;gap:6px;justify-content:center}
+  code{background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 6px;border-radius:6px}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--bd);background:#f8fafc;font-size:.8rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>Espace administrateur <small>(<%= user.nom %> – <%= user.etab %>)</small></h1>
+  <div class="nav">
+    <a class="btn" href="/referentiel/disciplines">📚 Référentiel (vue complète)</a>
+    <form action="/auth/logout" method="post"><button class="btn primary" type="submit">↩ Déconnexion</button></form>
+  </div>
+</header>
+
+<main>
+  <!-- ===================== INSPECTIONS ===================== -->
+  <section class="card">
+    <h2>Inspections</h2>
+    <div class="toolbar">
+      <div style="min-width:260px">
+        <label>Recherche rapide
+          <input id="iSearch" placeholder="Nom ou clé…" />
+        </label>
+      </div>
+      <div class="right">
+        <div class="pill"><span id="iCount">0</span></div>
+        <div class="pill">Page
+          <button class="btn ghost" id="iPrev">◀</button>
+          <input id="iPage" style="width:56px;text-align:center" value="1">
+          <button class="btn ghost" id="iNext">▶</button>
+          <select id="iPageSize" style="width:90px"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:6px">
+      <div><label>Nom de l’inspection <input id="iNom" placeholder="Arts plastiques" /></label></div>
+      <div><label>Clé (auto) <input id="iKey" placeholder="artsplastiques" /></label></div>
+      <div><label>Cycles activés</label>
+        <div class="row"><label><input type="checkbox" id="iC1" checked/> premier</label><label><input type="checkbox" id="iC2" checked/> second</label></div>
+      </div>
+      <div style="min-width:200px;align-self:flex-end"><button id="btnInspAdd" class="btn primary" type="button">+ Ajouter inspection</button></div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:12px">
+      <table id="tblInsp">
+        <thead><tr>
+          <th class="th-sort" data-sort="key">Clé <span class="arrow">↕</span></th>
+          <th class="th-sort" data-sort="nom">Nom <span class="arrow">↕</span></th>
+          <th>Cycles</th><th>Actions</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== UTILISATEURS ===================== -->
+  <section class="card">
+    <h2>Comptes utilisateurs</h2>
+    <div class="toolbar">
+      <div style="min-width:220px"><label>Inspection
+        <select id="uFilterInsp"><option value="">Toutes</option></select></label>
+      </div>
+      <div style="min-width:220px"><label>Département
+        <select id="uFilterDept"><option value="">Tous</option></select></label>
+      </div>
+      <div style="min-width:280px"><label>Recherche (nom / email / établissement)
+        <input id="uFilterQ" placeholder="Rechercher…"/></label>
+      </div>
+      <div class="right">
+        <button id="uFilterReset" class="btn">Réinitialiser</button>
+        <button id="uExport" class="btn">⬇ Export CSV</button>
+        <div class="pill"><span id="uCount">0</span></div>
+        <div class="pill">Page
+          <button class="btn ghost" id="uPrev">◀</button>
+          <input id="uPage" style="width:56px;text-align:center" value="1">
+          <button class="btn ghost" id="uNext">▶</button>
+          <select id="uPageSize" style="width:90px"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tblUsers">
+        <thead>
+          <tr>
+            <th class="th-sort" data-sort="nomComplet">Nom complet <span class="arrow">↕</span></th>
+            <th class="th-sort" data-sort="email">Email <span class="arrow">↕</span></th>
+            <th class="th-sort" data-sort="etablissement">Établissement <span class="arrow">↕</span></th>
+            <th class="th-sort" data-sort="departement">Département <span class="arrow">↕</span></th>
+            <th class="th-sort" data-sort="role">Rôle <span class="arrow">↕</span></th>
+            <th class="th-sort" data-sort="inspection">Inspection <span class="arrow">↕</span></th>
+            <th>Mot de passe</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Form création/édition -->
+    <form id="frmUser" style="margin-top:16px">
+      <div class="row">
+        <div><label>Nom complet <input name="nomComplet" required /></label></div>
+        <div><label>Rôle
+          <select name="role" required><option value="anim">Animateur</option><option value="insp">Inspecteur</option><option value="admin">Administrateur</option></select>
+        </label></div>
+        <div><label>Inspection
+          <select name="inspection" id="uInsp" required><option value="">—</option></select>
+        </label></div>
+      </div>
+      <div class="row">
+        <div><label>Email <input type="email" name="email" required /></label></div>
+        <div><label>Établissement <input name="etablissement" required /></label></div>
+        <div>
+          <label>Département
+            <select name="departement" id="uDept" required></select>
+          </label>
+          <input type="hidden" name="departementCode" id="uDeptCode" />
+        </div>
+      </div>
+      <div class="row"><div><label>Mot de passe <input type="text" name="password" required /></label></div></div>
+      <input type="hidden" name="_id" />
+      <button class="btn primary" style="margin-top:10px" type="submit">💾 Enregistrer</button>
+    </form>
+
+    <!-- Super admin -->
+    <form id="frmAdminPass" style="margin-top:18px">
+      <h3 style="margin:0 0 8px">Identifiants super-admin</h3>
+      <div class="row">
+        <div><label>Nouvel email <input type="email" name="email" required /></label></div>
+        <div><label>Nouveau mot de passe <input type="text" name="password" required /></label></div>
+      </div>
+      <button class="btn primary" style="margin-top:10px" type="submit">🔑 Mettre à jour</button>
+    </form>
+  </section>
+
+  <!-- ===================== RÉFÉRENTIEL DISCIPLINES ===================== -->
+  <section class="card">
+    <h2>Référentiel des disciplines (raccourci)</h2>
+    <div class="muted" style="margin-bottom:8px">Choisis inspection → cycle → spécialité. Le code est généré automatiquement.</div>
+
+    <div class="row">
+      <div><label>Inspection <select id="dInsp"></select></label></div>
+      <div><label>Cycle
+        <select id="dCycle"><option value="">—</option><option value="premier">premier</option><option value="second">second</option></select>
+      </label></div>
+      <div><label>Spécialité (existante) <select id="dSpec"><option value="">—</option></select></label></div>
+      <div><label>Ou nouvelle spécialité <input id="dSpecNew" placeholder="ex : AF4" /></label></div>
+      <div><label>Statut
+        <select id="dActif"><option value="">toutes</option><option value="true">actives</option><option value="false">inactives</option></select>
+      </label></div>
+      <div style="align-self:flex-end;min-width:160px"><button id="btnDiscLoad" class="btn">Charger</button></div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:12px;max-height:50vh">
+      <table id="tblDisc">
+        <thead><tr><th>Code</th><th>Nom</th><th>Actif</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="row" style="margin-top:14px;align-items:flex-end">
+      <div><label>Libellé <input id="dNom" placeholder="ex : Histoire de l'art" /></label></div>
+      <div><label>Code (auto) <input id="dCode" readonly placeholder="sera généré automatiquement" /></label></div>
+      <div style="min-width:180px"><button id="btnDiscAdd" class="btn primary" type="button">+ Ajouter</button></div>
+    </div>
+
+    <details style="margin-top:12px">
+      <summary class="muted">Import JSON – {inspection,cycle,specialite,nom,code?,actif?,ordre?,aliases?}</summary>
+      <textarea id="discImport" placeholder='[{"inspection":"artsplastiques","cycle":"second","specialite":"AF2","nom":"Technologie des matériaux"}]'></textarea>
+      <div class="row" style="margin-top:8px;align-items:center">
+        <div style="min-width:180px"><button id="btnDiscImport" class="btn warn" type="button">📥 Importer</button></div>
+        <div class="muted">Upsert par {inspection, code}. Si pas de code, il sera généré.</div>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===================== PRESETS (CLASSES PAR SPÉ) ===================== -->
+  <section class="card">
+    <h2>Presets – Classes par spécialité</h2>
+    <div class="row">
+      <div><label>Inspection <select id="pInsp"></select></label></div>
+      <div><label>Cycle
+        <select id="pCycle"><option value="">—</option><option value="premier">premier</option><option value="second">second</option></select>
+      </label></div>
+      <div><label>Spécialité <select id="pSpec"><option value="">—</option></select></label></div>
+      <div style="min-width:300px;align-self:flex-end;display:flex;gap:8px;flex-wrap:wrap">
+  <button id="btnLoadPreset" class="btn">Charger</button>
+  <button id="btnGenPreset"  class="btn warn" title="Générer automatiquement les classes uniformes (1ère→4ème ou 2nde→Tle)">⚙ Générer classes (uniformes)</button>
+  <button id="btnGenSave"    class="btn primary" title="Générer et enregistrer le preset pour cette spécialité">💾 Générer & sauvegarder</button>
+</div>
+
+    </div>
+    <div class="muted" style="margin:8px 0">Ces classes alimentent les défauts des baselines/collectes.</div>
+    <ul id="classList" class="row" style="list-style:none;padding:0;margin:0"></ul>
+    <div class="row" style="margin-top:10px;align-items:flex-end">
+      <div><label>Nouvelle classe <input id="newClass" placeholder="ex : 1ère année DECO" /></label></div>
+      <div style="min-width:150px"><button id="btnAddClass" class="btn">+ Ajouter</button></div>
+      <div style="min-width:220px;margin-left:auto"><button id="btnSavePreset" class="btn primary">💾 Enregistrer preset</button></div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ========================= Départements (remplace par ta liste complète) ========================= */
+const DEPARTEMENTS = [
+  { code:'01', nom:"Haute-Sanaga" },
+  { code:'02', nom:"Lékié" },
+  { code:'03', nom:"Mbam-et-Inoubou" },
+  { code:'04', nom:"Mbam-et-Kim" },
+  { code:'05', nom:"Méfou-et-Afamba" },
+  { code:'06', nom:"Méfou-et-Akono" },
+  { code:'07', nom:"Mfoundi" },
+  { code:'08', nom:"Nyong-et-Kéllé" },
+  { code:'09', nom:"Nyong-et-Mfoumou" },
+  { code:'10', nom:"Nyong-et-So'o" }
+];
+
+/* ========================= Helpers ========================= */
+function esc(s){ return String(s??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+async function api(url, opts={}){ const r=await fetch(url,{credentials:'same-origin',...opts}); if(!r.ok){ let t='Erreur'; try{t=(await r.json()).error||await r.text();}catch{} throw new Error(t);} return r.json(); }
+function keyFromNom(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,''); }
+function csvEscape(v){ const s=String(v??''); return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }
+
+/* ========================= INSPECTIONS ========================= */
+let INSPECTIONS_ALL=[], iSortKey='nom', iSortDir='asc', iPage=1, iPageSize=25, iSearchTerm='';
+const iNom=document.getElementById('iNom'), iKey=document.getElementById('iKey'), iC1=document.getElementById('iC1'), iC2=document.getElementById('iC2');
+const iPrev=document.getElementById('iPrev'), iNext=document.getElementById('iNext'), iPageInput=document.getElementById('iPage'), iPageSizeSel=document.getElementById('iPageSize');
+const iCount=document.getElementById('iCount'), iSearch=document.getElementById('iSearch'), tblInspBody=document.querySelector('#tblInsp tbody');
+
+iNom.addEventListener('input', ()=>{ if(!(iKey.dataset.touched==='1')) iKey.value = keyFromNom(iNom.value); });
+iKey.addEventListener('input', ()=> iKey.dataset.touched='1');
+iSearch.addEventListener('input', ()=>{ iSearchTerm=iSearch.value.trim().toLowerCase(); iPage=1; paintInspections(); });
+iPrev.onclick=()=>{ if(iPage>1){ iPage--; paintInspections(); } };
+iNext.onclick=()=>{ const {pages}=pagedInspections(); if(iPage<pages){ iPage++; paintInspections(); } };
+iPageInput.onchange=()=>{ const v=Math.max(1,Number(iPageInput.value||1)); const {pages}=pagedInspections(); iPage=Math.min(v,pages); paintInspections(); };
+iPageSizeSel.onchange=()=>{ iPageSize=Number(iPageSizeSel.value); iPage=1; paintInspections(); };
+document.querySelectorAll('#tblInsp thead .th-sort').forEach(th=>{
+  th.addEventListener('click', ()=>{ const k=th.dataset.sort; iSortKey===k? iSortDir=(iSortDir==='asc'?'desc':'asc'):(iSortKey=k,iSortDir='asc'); paintInspections(); });
+});
+
+function sortBy(arr,key,dir){ const s=[...arr].sort((a,b)=>String(a[key]??'').localeCompare(String(b[key]??''),'fr',{sensitivity:'base'})); return dir==='asc'?s:s.reverse(); }
+function filteredInspections(){ let rows=[...INSPECTIONS_ALL]; if(iSearchTerm){ rows=rows.filter(r=>(r.nom||'').toLowerCase().includes(iSearchTerm)||(r.key||'').toLowerCase().includes(iSearchTerm)); } return sortBy(rows,iSortKey,iSortDir); }
+function pagedInspections(){ const rows=filteredInspections(); const total=rows.length, pages=Math.max(1,Math.ceil(total/iPageSize)); const start=(iPage-1)*iPageSize; return {rows:rows.slice(start,start+iPageSize), total, pages, start}; }
+async function renderInspections(){
+  const resp=await api('/api/inspections');
+  INSPECTIONS_ALL=Array.isArray(resp)?resp:(resp.rows||[]);
+  paintInspections(); await populateInspectionSelects(INSPECTIONS_ALL);
+}
+function paintInspections(){
+  const {rows,total,pages,start}=pagedInspections();
+  tblInspBody.innerHTML = rows.map(i=>`
+    <tr data-id="${esc(i._id)}">
+      <td><code>${esc(i.key)}</code></td>
+      <td contenteditable="true" data-field="nom" title="Cliquer pour éditer">${esc(i.nom)}</td>
+      <td style="min-width:180px">
+        <label style="margin-right:8px"><input type="checkbox" data-field="premier" ${i.cyclesEnabled?.premier?'checked':''}> 1er</label>
+        <label><input type="checkbox" data-field="second" ${i.cyclesEnabled?.second?'checked':''}> 2nd</label>
+      </td>
+      <td class="actions">
+        <button class="btn" onclick="saveInsp('${esc(i._id)}')">💾</button>
+        <button class="btn danger" onclick="delInsp('${esc(i._id)}')">🗑</button>
+      </td>
+    </tr>`).join('');
+  iCount.textContent = `${total} inspection${total>1?'s':''} – ${total?(start+1):0}–${Math.min(start+rows.length,total)} / ${total}`;
+  iPageInput.value=iPage; iPrev.disabled=(iPage<=1); iNext.disabled=(iPage>=pages);
+}
+window.saveInsp=async function(id){
+  const tr=tblInspBody.querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+  const nom=tr.querySelector('[data-field="nom"]').textContent.trim();
+  const premier=tr.querySelector('[data-field="premier"]').checked;
+  const second =tr.querySelector('[data-field="second"]').checked;
+  if(!nom) return alert('Le nom est requis.');
+  await api('/api/inspections/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom,cyclesEnabled:{premier,second}})});
+  renderInspections();
+};
+window.delInsp=async function(id){ if(!confirm('Supprimer cette inspection ?'))return; await api('/api/inspections/'+id,{method:'DELETE'}); renderInspections(); };
+document.getElementById('btnInspAdd').addEventListener('click', async ()=>{
+  const nom=iNom.value.trim(); const key=keyFromNom(iKey.value||iNom.value); if(!nom) return alert('Nom requis'); if(!key) return alert('Clé invalide');
+  await api('/api/inspections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,nom,cycles:{premier:iC1.checked,second:iC2.checked}})});
+  iNom.value=''; iKey.value=''; iKey.dataset.touched=''; renderInspections();
+});
+
+/* ========================= UTILISATEURS ========================= */
+let USERS_ALL=[], uSortKey='nomComplet', uSortDir='asc', uPage=1, uPageSize=25;
+const tbody=document.querySelector('#tblUsers tbody'), frmUser=document.getElementById('frmUser');
+const uInsp=document.getElementById('uInsp'), uDept=document.getElementById('uDept'), uDeptCode=document.getElementById('uDeptCode');
+const uCount=document.getElementById('uCount'), uPrev=document.getElementById('uPrev'), uNext=document.getElementById('uNext');
+const uPageInput=document.getElementById('uPage'), uPageSizeSel=document.getElementById('uPageSize');
+document.querySelectorAll('#tblUsers thead .th-sort').forEach(th=>{
+  th.addEventListener('click', ()=>{ const k=th.dataset.sort; uSortKey===k? uSortDir=(uSortDir==='asc'?'desc':'asc'):(uSortKey=k,uSortDir='asc'); paintUsers(); });
+});
+uPrev.onclick=()=>{ if(uPage>1){ uPage--; paintUsers(); } };
+uNext.onclick=()=>{ const {pages}=pagedUsers(); if(uPage<pages){ uPage++; paintUsers(); } };
+uPageInput.onchange=()=>{ const v=Math.max(1,Number(uPageInput.value||1)); const {pages}=pagedUsers(); uPage=Math.min(v,pages); paintUsers(); };
+uPageSizeSel.onchange=()=>{ uPageSize=Number(uPageSizeSel.value); uPage=1; paintUsers(); };
+
+function populateDepartements(selectEl,withEmpty=true,labelAll){
+  selectEl.innerHTML=(withEmpty?`<option value="">${labelAll||'—'}</option>`:'')+DEPARTEMENTS.map(d=>`<option value="${esc(d.nom)}" data-code="${esc(d.code)}">${esc(d.nom)}</option>`).join('');
+}
+populateDepartements(uDept,false);
+uDept.addEventListener('change',()=>{ const opt=uDept.selectedOptions[0]; uDeptCode.value=opt?(opt.getAttribute('data-code')||''):''; });
+
+function roleBadge(role){ const cls={anim:'role-anim',insp:'role-insp',admin:'role-admin'}[role]||''; return `<span class="badge ${cls}">${esc(role||'')}</span>`; }
+function usersFilteredSorted(){ let rows=[...USERS_ALL]; rows.sort((a,b)=>String(a[uSortKey]??'').localeCompare(String(b[uSortKey]??''),'fr',{sensitivity:'base'})); if(uSortDir==='desc') rows.reverse(); return rows; }
+function pagedUsers(){ const rows=usersFilteredSorted(); const total=rows.length,pages=Math.max(1,Math.ceil(total/uPageSize)); const start=(uPage-1)*uPageSize; return {rows:rows.slice(start,start+uPageSize), total, pages, start}; }
+function paintUsers(){
+  const {rows,total,pages,start}=pagedUsers();
+  tbody.innerHTML=rows.map(u=>`
+    <tr data-id="${esc(u._id)}">
+      <td style="text-align:left;white-space:normal">${esc(u.nomComplet||'')}</td>
+      <td>${esc(u.email||'')}</td>
+      <td style="text-align:left;white-space:normal">${esc(u.etablissement||'')}</td>
+      <td>${esc(u.departement||'')}</td>
+      <td>${roleBadge(u.role)}</td>
+      <td>${esc(u.inspection||'—')}</td>
+      <td><input type="password" value="********" readonly style="border:none;background:transparent;text-align:center;width:90px"></td>
+      <td class="actions">
+        <button type="button" class="btn" onclick="togglePass(this)">👁</button>
+        <button type="button" class="btn danger" onclick="delUser('${esc(u._id)}')">🗑</button>
+        <button type="button" class="btn" onclick="editUser('${esc(u._id)}')">✏️</button>
+      </td>
+    </tr>`).join('');
+  uCount.textContent=`${total} utilisateur${total>1?'s':''} – ${total?(start+1):0}–${Math.min(start+rows.length,total)} / ${total}`;
+  uPageInput.value=uPage; uPrev.disabled=(uPage<=1); uNext.disabled=(uPage>=pages);
+}
+function togglePass(btn){ const input=btn.closest('tr').querySelector('input'); input.type=input.type==='password'?'text':'password'; } window.togglePass=togglePass;
+
+async function delUser(id){ if(!confirm('Supprimer cet utilisateur ?')) return; await api('/admin/users/'+id,{method:'DELETE'}); loadUsers(); } window.delUser=delUser;
+function editUser(id){
+  const tr=tbody.querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+  frmUser._id.value=id;
+  frmUser.nomComplet.value=tr.children[0].textContent.trim();
+  frmUser.email.value=tr.children[1].textContent.trim();
+  frmUser.etablissement.value=tr.children[2].textContent.trim();
+  const deptName=tr.children[3].textContent.trim(); [...uDept.options].forEach(o=>{ if(o.value===deptName){ uDept.value=deptName; uDept.dispatchEvent(new Event('change')); }});
+  frmUser.role.value=tr.children[4].textContent.trim();
+  const inspVal=tr.children[5].textContent.trim(); if([...uInsp.options].some(o=>o.value===inspVal)) uInsp.value=inspVal;
+  frmUser.password.value=''; frmUser.scrollIntoView({behavior:'smooth'});
+}
+window.editUser=editUser;
+
+frmUser.addEventListener('submit', async e=>{
+  e.preventDefault();
+  const data=Object.fromEntries(new FormData(frmUser));
+  if(data._id){
+    await api('/admin/users/'+data._id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  }else{
+    await api('/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  }
+  frmUser.reset(); uDeptCode.value=''; loadUsers();
+});
+
+document.getElementById('frmAdminPass').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const data=Object.fromEntries(new FormData(e.target));
+  await api('/admin/changePass',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  alert('Identifiants admin mis à jour');
+});
+
+/* ==== Filtres utilisateurs (requête serveur) ==== */
+const uFilterInsp=document.getElementById('uFilterInsp');
+const uFilterDept=document.getElementById('uFilterDept');
+const uFilterQ=document.getElementById('uFilterQ');
+const uFilterReset=document.getElementById('uFilterReset');
+function populateDepartementsFilter(){ populateDepartements(uFilterDept,true,'Tous'); }
+populateDepartementsFilter();
+
+async function loadUsers(){
+  const qs=new URLSearchParams();
+  if(uFilterInsp.value) qs.set('inspection',uFilterInsp.value);
+  if(uFilterDept.value) qs.set('departement',uFilterDept.value);
+  const q=(uFilterQ.value||'').trim(); if(q) qs.set('q',q);
+  const url=qs.toString()?('/admin/users?'+qs.toString()):'/admin/users';
+  const data=await api(url);
+  USERS_ALL=Array.isArray(data)?data:(data.rows||[]);
+  uPage=1; paintUsers();
+}
+uFilterInsp.addEventListener('change',loadUsers);
+uFilterDept.addEventListener('change',loadUsers);
+let _timerQ; uFilterQ.addEventListener('input',()=>{ clearTimeout(_timerQ); _timerQ=setTimeout(loadUsers,250); });
+uFilterReset.addEventListener('click',()=>{ uFilterInsp.value=''; uFilterDept.value=''; uFilterQ.value=''; loadUsers(); });
+
+/* Export CSV */
+document.getElementById('uExport').addEventListener('click',()=>{
+  const rows = usersFilteredSorted();
+  const head = ["Nom complet","Email","Établissement","Département","Rôle","Inspection"];
+  const csv = [head.map(csvEscape).join(',')].concat(rows.map(r=>[r.nomComplet,r.email,r.etablissement,r.departement,r.role,r.inspection].map(csvEscape).join(','))).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='utilisateurs.csv'; a.click(); URL.revokeObjectURL(url);
+});
+
+/* ========================= Sélecteurs inspection partagés + Disciplines ========================= */
+const dInsp=document.getElementById('dInsp');
+const pInsp=document.getElementById('pInsp');  // <— utilisé plus bas
+async function populateInspectionSelects(listMaybe){
+  let list=listMaybe||[]; if(!listMaybe){ try{ list=await api('/api/inspections'); }catch{ list=[]; } }
+  document.getElementById('uInsp').innerHTML = '<option value="">—</option>' + list.map(i=>`<option value="${esc(i.key)}">${esc(i.nom)}</option>`).join('');
+  dInsp.innerHTML = list.length ? list.map(i=>`<option value="${esc(i.key)}">${esc(i.nom)}</option>`).join('') : '<option value="">(aucune inspection)</option>';
+  pInsp.innerHTML = dInsp.innerHTML;
+  document.getElementById('uFilterInsp').innerHTML = '<option value="">Toutes</option>' + list.map(i=>`<option value="${esc(i.key)}">${esc(i.nom)}</option>`).join('');
+}
+
+const dCycle=document.getElementById('dCycle'), dSpec=document.getElementById('dSpec'), dSpecNew=document.getElementById('dSpecNew'), dActif=document.getElementById('dActif');
+const btnDiscLoad=document.getElementById('btnDiscLoad'), btnDiscAdd=document.getElementById('btnDiscAdd'), btnDiscImport=document.getElementById('btnDiscImport');
+const tblDiscBody=document.querySelector('#tblDisc tbody'), dNom=document.getElementById('dNom'), dCode=document.getElementById('dCode');
+
+async function loadSpecialites(into,insp,cycle){ into.innerHTML='<option value="">—</option>'; if(!insp||!cycle) return; const rows=await api(`/api/disciplines?inspection=${encodeURIComponent(insp)}&cycle=${encodeURIComponent(cycle)}`); [...new Set(rows.map(r=>r.specialite))].sort().forEach(s=> into.insertAdjacentHTML('beforeend',`<option value="${esc(s)}">${esc(s)}</option>`)); }
+dInsp.addEventListener('change',()=>{ loadSpecialites(dSpec,dInsp.value,dCycle.value); refreshAutoCode(); });
+dCycle.addEventListener('change',()=>{ loadSpecialites(dSpec,dInsp.value,dCycle.value); refreshAutoCode(); });
+dSpec.addEventListener('change',refreshAutoCode);
+dSpecNew.addEventListener('input',refreshAutoCode);
+btnDiscLoad.addEventListener('click',loadDisc);
+btnDiscAdd.addEventListener('click',addDisc);
+btnDiscImport.addEventListener('click',importDisc);
+
+async function loadDisc(){ if(!dInsp.value) return alert('Choisis une inspection.');
+  const qs=new URLSearchParams({inspection:dInsp.value}); if(dCycle.value) qs.set('cycle',dCycle.value); const spec=dSpecNew.value.trim()||dSpec.value; if(spec) qs.set('specialite',spec); if(dActif.value) qs.set('actif',dActif.value);
+  renderDisc(await api('/api/disciplines?'+qs.toString()));
+}
+function renderDisc(list){ tblDiscBody.innerHTML=(list||[]).map(d=>`
+  <tr data-id="${esc(d._id)}">
+    <td><code>${esc(d.code)}</code></td>
+    <td contenteditable="true">${esc(d.nom)}</td>
+    <td><input type="checkbox" ${d.actif?'checked':''}></td>
+    <td class="actions">
+      <button class="btn" onclick="saveDisc('${esc(d._id)}', this)">💾</button>
+      <button class="btn ${d.actif?'danger':''}" onclick="toggleDisc('${esc(d._id)}', ${d.actif})">${d.actif?'Désactiver':'Activer'}</button>
+    </td>
+  </tr>`).join('');
+}
+window.saveDisc=async function(id,btn){ const tr=btn.closest('tr'); const nom=tr.children[1].textContent.trim(); const actif=tr.children[2].querySelector('input').checked;
+  await api('/api/disciplines/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom,actif})}); loadDisc();
+};
+window.toggleDisc=async function(id,wasActive){ const path=wasActive?'disable':'enable'; await api(`/api/disciplines/${id}/${path}`,{method:'PATCH'}); loadDisc(); };
+function localSlug(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'').replace(/_+/g,'_').toUpperCase(); }
+async function refreshAutoCode(){ dCode.value=''; const nom=(dNom.value||'').trim(); const spec=(dSpecNew.value.trim()||dSpec.value||'').trim(); if(!dInsp.value||!spec||!nom) return;
+  try{ const qs=new URLSearchParams({inspection:dInsp.value,specialite:spec,nom}); const data=await api('/api/disciplines/slug?'+qs.toString()); dCode.value=data.code||''; }catch{ dCode.value=`${spec}_${localSlug(nom)}`; }
+}
+dNom.addEventListener('input',()=>{ clearTimeout(window._slugTimer); window._slugTimer=setTimeout(refreshAutoCode,250); });
+async function addDisc(){ if(!dInsp.value) return alert('Choisis une inspection.'); if(!dCycle.value) return alert('Choisis un cycle.');
+  const spec=(dSpecNew.value.trim()||dSpec.value||'').trim().toUpperCase(); if(!spec) return alert('Choisis/saisis une spécialité.'); const nom=(dNom.value||'').trim(); if(!nom) return alert('Saisis un libellé.');
+  const res=await api('/api/disciplines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inspection:dInsp.value,cycle:dCycle.value,specialite:spec,nom})});
+  alert(`Discipline créée (code : ${res.code})`); dNom.value=''; dCode.value=''; if(dSpecNew.value){ await loadSpecialites(dSpec,dInsp.value,dCycle.value); dSpec.value=spec; dSpecNew.value=''; } loadDisc();
+}
+async function importDisc(){ let rows; try{ rows=JSON.parse(document.getElementById('discImport').value||'[]'); }catch{ return alert('JSON invalide'); }
+  if(!Array.isArray(rows)||!rows.length) return alert('Aucune donnée.');
+  let ok=0,ko=0; for(const r of rows){ try{ await api('/api/disciplines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r)}); ok++; }catch{ ko++; } }
+  alert(`Import terminé – OK:${ok} / KO:${ko}`); loadDisc();
+}
+
+/* ========================= PRESETS ========================= */
+const pCycle=document.getElementById('pCycle'), pSpec=document.getElementById('pSpec');
+const classList=document.getElementById('classList'), newClass=document.getElementById('newClass');
+const btnLoadPreset=document.getElementById('btnLoadPreset'), btnAddClass=document.getElementById('btnAddClass'), btnSavePreset=document.getElementById('btnSavePreset');
+let PRESET_CLASSES=[];
+pInsp.addEventListener('change',()=> loadSpecialites(pSpec,pInsp.value,pCycle.value));
+pCycle.addEventListener('change',()=> loadSpecialites(pSpec,pInsp.value,pCycle.value));
+btnLoadPreset.addEventListener('click', loadPreset);
+btnAddClass.addEventListener('click',()=>{ const v=(newClass.value||'').trim(); if(!v) return; if(PRESET_CLASSES.includes(v)) return alert('Classe déjà présente.'); PRESET_CLASSES.push(v); newClass.value=''; renderPreset(); });
+btnSavePreset.addEventListener('click', savePreset);
+const btnGenPreset = document.getElementById('btnGenPreset');
+const btnGenSave   = document.getElementById('btnGenSave');
+
+btnGenPreset.addEventListener('click', genPresetPreview);
+btnGenSave.addEventListener('click', genPresetAndSave);
+
+async function genPresetPreview(){
+  if(!pInsp.value) return alert('Choisis une inspection.');
+  if(!pCycle.value) return alert('Choisis un cycle (premier/second).');
+  if(!pSpec.value) return alert('Choisis une spécialité.');
+  const qs = new URLSearchParams({ inspection:pInsp.value, cycle:pCycle.value, specialite:pSpec.value });
+  const { classes=[] } = await api('/api/presets/generate?'+qs.toString());
+  PRESET_CLASSES = classes.slice();
+  renderPreset();
+  alert('Aperçu généré (non enregistré).');
+}
+
+async function genPresetAndSave(){
+  if(!pInsp.value) return alert('Choisis une inspection.');
+  if(!pCycle.value) return alert('Choisis un cycle (premier/second).');
+  if(!pSpec.value) return alert('Choisis une spécialité.');
+  const qs = new URLSearchParams({ inspection:pInsp.value, cycle:pCycle.value, specialite:pSpec.value, save:'true' });
+  const { classes=[] } = await api('/api/presets/generate?'+qs.toString());
+  PRESET_CLASSES = classes.slice();
+  renderPreset();
+  alert('Preset généré et enregistré.');
+}
+
+function renderPreset(){ classList.innerHTML=PRESET_CLASSES.map((c,i)=>`<li class="pill" style="gap:8px">${esc(c)} <button class="btn danger" type="button" onclick="removePreset(${i})">🗑</button></li>`).join(''); }
+window.removePreset=(i)=>{ PRESET_CLASSES.splice(i,1); renderPreset(); };
+async function loadPreset(){ if(!pInsp.value) return alert('Choisis une inspection.'); if(!pCycle.value) return alert('Choisis un cycle.'); if(!pSpec.value) return alert('Choisis une spécialité.');
+  const qs=new URLSearchParams({inspection:pInsp.value,cycle:pCycle.value,specialite:pSpec.value}); const {classes=[]}=await api('/api/presets?'+qs.toString()); PRESET_CLASSES=classes.slice(); renderPreset();
+}
+async function savePreset(){ if(!pInsp.value||!pCycle.value||!pSpec.value) return alert('Inspection, cycle et spécialité requis.');
+  await api('/api/presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inspection:pInsp.value,cycle:pCycle.value,specialite:pSpec.value,classes:PRESET_CLASSES})});
+  alert('Preset enregistré.');
+}
+
+/* ========================= Boot ========================= */
+(async function boot(){ await renderInspections(); await loadUsers(); })();
+</script>
+</body>
+</html>

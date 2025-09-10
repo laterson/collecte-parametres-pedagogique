@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>Mes collectes</title>
+<style>
+  :root{--bg:#f7f7f7;--b:#cfd4dc;--th:#eef2f7}
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f7;margin:16px}
+  h2{margin:0 0 8px}
+  .top{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  a.btn,button.btn{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid #bbb;border-radius:8px;text-decoration:none;color:#222;background:#fff;cursor:pointer}
+  a.btn:hover,button.btn:hover{background:#f5f5f5}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+  .filters select{padding:6px 8px;border:1px solid #bbb;border-radius:8px;background:#fff}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 6px}
+  .chip{background:#fff;border:1px solid var(--b);border-radius:999px;padding:4px 10px;font-size:12px}
+  table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff}
+  th,td{border:1px solid #ddd;padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--th)}
+  td.right{text-align:right}
+  .muted{opacity:.7}
+  .nowrap{white-space:nowrap}
+</style>
+</head>
+<body>
+
+<h2>Mes collectes – <%= user.etab %></h2>
+
+<div class="top">
+  <a class="btn" href="/collecte/nouvelle">➕ Nouvelle collecte</a>
+  <a class="btn" href="/fichiers">📎 Mes fichiers</a>
+  <a class="btn" href="/messages">💬 Messagerie</a>
+  <button class="btn" id="btnExportAll">⬇️ Export CSV (liste)</button>
+</div>
+
+<div class="filters">
+  <label>Cycle
+    <select id="fCycle">
+      <option value="">Tous</option>
+      <option value="premier">premier</option>
+      <option value="second">second</option>
+    </select>
+  </label>
+  <label>Spécialité
+    <select id="fSpec">
+      <option value="">Toutes</option>
+      <option value="DECO">DECO</option>
+      <option value="AF1">AF1</option>
+      <option value="AF2">AF2</option>
+      <option value="AF3">AF3</option>
+    </select>
+  </label>
+  <label>Évaluation
+    <select id="fEval">
+      <option value="">Toutes</option>
+      <option value="1">1</option><option value="2">2</option>
+      <option value="3">3</option><option value="4">4</option>
+      <option value="5">5</option><option value="6">6</option>
+    </select>
+  </label>
+</div>
+
+<div class="stats">
+  <span class="chip" id="statTotal">Total: 0</span>
+  <span class="chip" id="statDECO">DECO: 0</span>
+  <span class="chip" id="statAF1">AF1: 0</span>
+  <span class="chip" id="statAF2">AF2: 0</span>
+  <span class="chip" id="statAF3">AF3: 0</span>
+</div>
+
+<table id="tbl">
+  <thead>
+  <tr>
+    <th>Date</th>
+    <th>Cycle</th>
+    <th>Spécialité</th>
+    <th>Évaluation</th>
+    <th class="right">Nb classes</th>
+    <th>Actions</th>
+  </tr>
+</thead>
+<tbody id="tbody">
+  <% if ((rows||[]).length === 0) { %>
+    <tr><td colspan="6">Aucune collecte pour le moment.</td></tr>
+  <% } else { rows.forEach((r,idx) => { %>
+    <tr class="row" data-cycle="<%= r.cycle %>" data-spec="<%= r.specialite %>" data-eval="<%= r.evaluation %>">
+      <td class="nowrap"><%= new Date(r.dateDepot).toLocaleString() %></td>
+      <td><%= r.cycle %></td>
+      <td><%= r.specialite %></td>
+      <td><%= r.evaluation %></td>
+      <td class="right"><%= typeof r.nbClasses === 'number' ? r.nbClasses : (r.classes?.length||0) %></td>
+      <td>
+        <button class="btn btnLineCsv" data-idx="<%= idx %>">⬇️ CSV</button>
+        <form action="/collecte/<%= r._id %>/delete" method="post" onsubmit="return confirm('Supprimer cette collecte ?');" style="display:inline">
+          <button class="btn" type="submit">🗑️ Supprimer</button>
+        </form>
+      </td>
+    </tr>
+  <% }) } %>
+</tbody>
+</table>
+
+<script>
+  const ROWS = <%- JSON.stringify(rows||[]) %>;
+
+  const fCycle = document.getElementById('fCycle');
+  const fSpec  = document.getElementById('fSpec');
+  const fEval  = document.getElementById('fEval');
+  const tbody  = document.getElementById('tbody');
+
+  const statTotal = document.getElementById('statTotal');
+  const statDECO  = document.getElementById('statDECO');
+  const statAF1   = document.getElementById('statAF1');
+  const statAF2   = document.getElementById('statAF2');
+  const statAF3   = document.getElementById('statAF3');
+
+  function applyFilters(){
+    const c = fCycle.value.trim();
+    const s = fSpec.value.trim();
+    const e = fEval.value.trim();
+    let visible = 0, d=0,a1=0,a2=0,a3=0;
+
+    [...tbody.querySelectorAll('tr.row')].forEach(tr=>{
+      const ok = (!c || tr.dataset.cycle===c)
+              && (!s || tr.dataset.spec===s)
+              && (!e || tr.dataset.eval===e);
+      tr.style.display = ok ? '' : 'none';
+      if(ok){
+        visible++;
+        if(tr.dataset.spec==='DECO') d++;
+        if(tr.dataset.spec==='AF1')  a1++;
+        if(tr.dataset.spec==='AF2')  a2++;
+        if(tr.dataset.spec==='AF3')  a3++;
+      }
+    });
+
+    statTotal.textContent = `Total: ${visible}`;
+    statDECO.textContent  = `DECO: ${d}`;
+    statAF1.textContent   = `AF1: ${a1}`;
+    statAF2.textContent   = `AF2: ${a2}`;
+    statAF3.textContent   = `AF3: ${a3}`;
+  }
+  [fCycle,fSpec,fEval].forEach(el=> el.addEventListener('change', applyFilters));
+  applyFilters();
+
+  function lineToCSV(row){
+    const out = [];
+    const push = arr => out.push(arr.map(x=>{
+      const s=String(x??''); return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+    }).join(';'));
+
+    push([
+      'Date','Cycle','Spécialité','Évaluation','Classe','Discipline',
+      'Heures dues','Heures faites','% Heures',
+      'Leçons prévues','Leçons faites','% Leçons',
+      'Leçons dig. prév.','Leçons dig. faites','% Leçons dig.',
+      'TP prévus','TP faits','% TP',
+      'TP dig. prév.','TP dig. faits','% TP dig.',
+      "Élèves comp.","Moy ≥ 10/20","% réussite",
+      "Eff. ens.","En poste","% poste"
+    ]);
+
+    const pct = (a,b)=> a>0 ? ((b/a)*100).toFixed(2) : '';
+
+    const head = [new Date(row.dateDepot).toLocaleString(), row.cycle, row.specialite, row.evaluation];
+    (row.classes||[]).forEach(cl=>{
+      (cl.disciplines||[]).forEach(d=>{
+        push([
+          ...head,
+          cl.nom,
+          d.nom,
+          d.hD||0, d.hF||0, pct(d.hD,d.hF),
+          d.lp||0, d.lf||0, pct(d.lp,d.lf),
+          d.ldp||0, d.ldf||0, pct(d.ldp,d.ldf),
+          d.tp||0, d.tf||0, pct(d.tp,d.tf),
+          d.tdp||0, d.tdf||0, pct(d.tdp,d.tdf),
+          d.comp||0, d.m10||0, pct(d.comp,d.m10),
+          d.effTot||0, d.effPos||0, pct(d.effTot,d.effPos)
+        ]);
+      });
+    });
+
+    return out.join('\n');
+  }
+
+  document.querySelectorAll('.btnLineCsv').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const idx = +btn.dataset.idx;
+      const row = ROWS[idx];
+      const csv = lineToCSV(row);
+      const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const url  = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const name = `collecte_${row.specialite}_eval${row.evaluation}.csv`;
+      a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+  });
+
+  document.getElementById('btnExportAll').addEventListener('click', ()=>{
+    const visibleIdx = [];
+    [...tbody.querySelectorAll('tr.row')].forEach((tr,i)=>{
+      if(tr.style.display==='') visibleIdx.push(i);
+    });
+    if(visibleIdx.length===0){ alert('Aucune ligne visible à exporter.'); return; }
+
+    const out = [];
+    const push = arr => out.push(arr.map(x=>{
+      const s=String(x??''); return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+    }).join(';'));
+
+    push([
+      'Date','Cycle','Spécialité','Évaluation','Classe','Discipline',
+      'Heures dues','Heures faites','% Heures',
+      'Leçons prévues','Leçons faites','% Leçons',
+      'Leçons dig. prév.','Leçons dig. faites','% Leçons dig.',
+      'TP prévus','TP faits','% TP',
+      'TP dig. prév.','TP dig. faits','% TP dig.',
+      "Élèves comp.","Moy ≥ 10/20","% réussite",
+      "Eff. ens.","En poste","% poste"
+    ]);
+    const pct=(a,b)=> a>0 ? ((b/a)*100).toFixed(2) : '';
+
+    visibleIdx.forEach(i=>{
+      const row = ROWS[i];
+      const head = [new Date(row.dateDepot).toLocaleString(), row.cycle, row.specialite, row.evaluation];
+      (row.classes||[]).forEach(cl=>{
+        (cl.disciplines||[]).forEach(d=>{
+          push([
+            ...head,
+            cl.nom,
+            d.nom,
+            d.hD||0, d.hF||0, pct(d.hD,d.hF),
+            d.lp||0, d.lf||0, pct(d.lp,d.lf),
+            d.ldp||0, d.ldf||0, pct(d.ldp,d.ldf),
+            d.tp||0, d.tf||0, pct(d.tp,d.tf),
+            d.tdp||0, d.tdf||0, pct(d.tdp,d.tdf),
+            d.comp||0, d.m10||0, pct(d.comp,d.m10),
+            d.effTot||0, d.effPos||0, pct(d.effTot,d.effPos)
+          ]);
+        });
+      });
+    });
+
+    const csv = out.join('\n');
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='mes_collectes_filtrees.csv'; document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+</script>
+
+</body>
+</html>

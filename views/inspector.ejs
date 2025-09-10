@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Tableau de bord Inspecteur — <%= user.nom %></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f7f7f9; --ink:#111827; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb;
+      --brand:#0ea5e9; --ok:#16a34a; --warn:#f59e0b; --bad:#ef4444;
+      --bubbleMe:#e7f3ff; --bubbleOther:#f1f5f9;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--ink)}
+    a{color:inherit;text-decoration:none}
+    header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+    header h1{margin:0;font-size:16px;font-weight:700}
+    header .who{color:var(--muted);font-size:12px}
+    header .tabs{display:flex;gap:6px}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+    .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+    .btn.soft{background:#f1f5f9}
+    .layout{display:grid;grid-template-columns:280px 1fr 380px;gap:14px;height:calc(100% - 53px)}
+    .sidebar{border-right:1px solid var(--line);background:#fff;display:flex;flex-direction:column;min-height:0}
+    .side-head{padding:10px;border-bottom:1px solid var(--line)}
+    .select{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff}
+    .tree{padding:8px 6px;overflow:auto;flex:1}
+    .node{display:flex;align-items:center;gap:6px;padding:6px;border-radius:8px;cursor:pointer}
+    .node:hover{background:#f4f7fb}
+    .node.active{background:#e8f5ff;border:1px solid #bee3ff}
+    .indent-1{padding-left:12px}
+    .indent-2{padding-left:24px}
+    .indent-3{padding-left:36px}
+    main{padding:12px;overflow:auto}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+    .muted{color:var(--muted)}
+    .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+    .kpi{border:1px dashed var(--line);border-radius:10px;padding:10px;background:#fff}
+    .kpi .label{font-size:12px;color:var(--muted)}
+    .kpi .n{font-weight:700;font-size:20px}
+    .legend{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px}
+    table{width:100%;border-collapse:collapse;background:#fff}
+    th,td{border:1px solid var(--line);padding:6px 8px;font-size:12px;text-align:right}
+    th:first-child, td:first-child{text-align:left}
+    thead th{background:#f8fafc}
+    .heat-ok{color:var(--ok);font-weight:600}
+    .heat-warn{color:#b45309;font-weight:600}
+    .heat-bad{color:#ef4444;font-weight:600}
+    .empty{padding:12px;border:1px dashed var(--line);border-radius:10px;background:#fff}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .tabsR{display:flex;gap:10px;border-bottom:1px solid var(--line);margin-bottom:10px}
+    .tabsR .tab{padding:6px 8px;border-bottom:2px solid transparent;cursor:pointer}
+    .tabsR .tab.active{border-bottom-color:var(--brand);color:#0b5cc4}
+    .scroll{max-height:520px;overflow:auto}
+    .chat{display:flex;flex-direction:column;height:520px}
+    .msgs{border:1px solid var(--line);border-radius:10px;flex:1;overflow:auto;padding:10px;background:#fbfcfe;margin-bottom:8px}
+    .bubble{max-width:78%;padding:8px 10px;border-radius:14px;margin:6px 0;position:relative;box-shadow:0 1px 0 rgba(0,0,0,.03)}
+    .me{margin-left:auto;background:var(--bubbleMe)}
+    .other{margin-right:auto;background:var(--bubbleOther)}
+    .bubble .from{font-weight:700;margin-bottom:2px}
+.bubble .reply{border-left:3px solid #93c5fd;background:#f0f7ff;padding:6px 8px;border-radius:8px;margin-bottom:6px;font-size:12px;color:#475569}
+.msgActions{display:flex;gap:8px;margin-top:2px;font-size:12px;color:#64748b}
+.msgActions .link{cursor:pointer;text-decoration:underline}
+.inspTag{font-size:11px;color:#6b7280;margin-left:6px}
+/* zone messages – même rendu que côté AP, sans hauteur fixe */
+.wchat .w-msgs{
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+  margin-top:8px;
+  overflow:auto;
+  padding:10px;
+  background:#e5ddd5;
+  background-image:
+    radial-gradient(rgba(0,0,0,.035) 0.5px, transparent 0.5px),
+    radial-gradient(rgba(0,0,0,.035) 0.5px, transparent 0.5px);
+  background-position: 0 0, 12px 12px;
+  background-size: 24px 24px;
+}
+
+    .bubble small{display:block;margin-top:4px;color:#64748b;font-size:11px;text-align:right}
+    .composer{display:flex;gap:8px}
+    .composer input[type=text]{flex:1;padding:10px;border:1px solid var(--line);border-radius:999px;background:#fff}
+    .composer .btn{border-radius:999px}
+    .mail{border:1px solid var(--line);border-radius:10px;padding:8px;margin:6px 0;cursor:pointer;background:#fff}
+    .mail:hover{background:#f8fbff}
+    .mail .sub{font-size:12px;color:var(--muted)}
+    .mail .sujet{font-weight:600}
+    .badge{padding:2px 6px;border:1px solid var(--line);border-radius:999px;font-size:11px;margin-left:6px;color:#555}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
+    .panel{width:min(980px,94vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+    .panel h3{margin:0 0 6px 0}
+    .tabs2{display:flex;gap:8px;border-bottom:1px solid var(--line);margin:8px 0}
+    .tabs2 .t{padding:6px 8px;border-bottom:2px solid transparent;cursor:pointer}
+    .tabs2 .t.active{border-bottom-color:var(--brand);color:#0b5cc4}
+    .closeX{margin-left:auto;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12px;background:#fff}
+    .fileRow{display:flex;align-items:center;gap:8px;padding:6px;border:1px solid var(--line);border-radius:8px;margin:6px 0;background:#fff}
+    .fileRow a{font-weight:600}
+    .fileRow .del{margin-left:auto}
+    @media (max-width:1200px){ .kpis{grid-template-columns:repeat(3,1fr);} .layout{grid-template-columns:1fr} }
+    /* ===== WhatsApp-like chat (aligné sur AP) ===== */
+.wchat .w-header{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#075e54;color:#fff}
+.wchat .w-name{font-weight:700}
+.wchat .w-sub{font-size:12px;opacity:.9}
+.wchat .w-avatar{width:34px;height:34px;border-radius:50%;background:#25d366;display:flex;align-items:center;justify-content:center;font-weight:800}
+
+.w-day{display:inline-block;margin:10px auto 4px;padding:3px 10px;border-radius:999px;background:rgba(0,0,0,.08);font-size:11px}
+.w-msg{display:flex;gap:6px;margin:8px 0;align-items:flex-end}
+.w-avatar-sm{width:24px;height:24px;border-radius:50%;background:#c8e6c9;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#2e7d32}
+.w-bubble{max-width:78%;padding:8px 10px;border-radius:14px;box-shadow:0 1px 1px rgba(0,0,0,.06)}
+.w-msg.theirs .w-bubble{background:#fff;border-top-left-radius:4px}
+.w-msg.mine{justify-content:flex-end}
+.w-msg.mine .w-bubble{background:#dcf8c6;border-top-right-radius:4px}
+.w-from{font-size:11px;color:#075e54;margin:0 0 2px 2px;font-weight:700}
+.w-msg.mine .w-from{color:#0a6e56}
+.w-text{white-space:pre-wrap;word-wrap:break-word}
+.w-meta{font-size:10px;opacity:.7;text-align:right;margin-top:3px;display:flex;gap:6px;justify-content:flex-end}
+.w-ticks{font-weight:700}
+
+/* Quote (reply) */
+.w-quote{border-left:3px solid #34b7f1;background:rgba(255,255,255,.7);padding:6px 8px;border-radius:8px;margin-bottom:6px;cursor:pointer}
+.w-quote .q-name{font-size:11px;font-weight:700;margin-bottom:2px;color:#1f2937}
+.w-quote .q-text{font-size:12px;color:#374151}
+
+/* Barre “Répondre à …” */
+.w-replybar{display:flex;align-items:center;gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:6px 8px;background:#f1f5f9;margin-top:6px}
+.w-replybar .name{font-weight:700}
+.w-replybar .snippet{font-size:12px;color:#475569}
+.w-replybar .close{margin-left:auto;border:none;background:#e11d48;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer}
+
+/* Champ de saisie */
+.w-input{display:flex;gap:6px;align-items:center;margin-top:8px;border:1px solid #e5e7eb;border-radius:999px;padding:6px 8px;background:#fff}
+.w-input .icon{border:none;background:transparent;cursor:pointer;font-size:18px}
+.w-input input[type=text]{flex:1;border:none;outline:0;font-size:14px}
+.w-input .send{border:none;border-radius:50%;width:34px;height:34px;background:#128c7e;color:#fff;font-weight:800;cursor:pointer}
+
+/* Surlignage quand on ouvre une citation */
+.flash{animation:flash 1.8s ease 1}
+@keyframes flash{0%{box-shadow:0 0 0 0 rgba(255,238,0,.9)}100%{box-shadow:0 0 0 0 transparent}}
+/* utilitaires */
+.hidden{display:none !important}
+
+/* typing (même rendu que côté AP) */
+.typing{height:14px;font-size:11px;margin:4px 0;color:#64748b}
+
+/* pane chat doit être flex pour que l’onglet 'Chat' l’affiche correctement */
+#paneChat{display:flex;flex-direction:column}
+
+/* même logique que l'ancien .chat : le composant occupe 520px */
+.wchat{display:flex;flex-direction:column;height:520px}
+.wchat .w-msgs{flex:1;height:auto} /* pas de hauteur fixe 260px, on laisse flex prendre la place */
+.w-avatar-sm{
+  width:24px; height:24px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:#c8e6c9; color:#2e7d32; font-weight:800; font-size:11px;
+  text-transform:uppercase; user-select:none;
+}
+
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Tableau de bord Inspecteur — <span class="who"><%= (user.inspection||'').toUpperCase() %> • <%= user.nom %></span></h1>
+    </div>
+    <div class="tabs">
+      <a href="/inspector" class="btn primary">Synthèse</a>
+      <a href="/inspector/carte" class="btn">Carte scolaire</a>
+      <a href="/fichiers" class="btn">Échanges</a>
+      <form action="/auth/logout" method="post" style="display:inline"><button class="btn">Déconnexion</button></form>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- ======== Sidebar gauche : Explorateur ======== -->
+    <aside class="sidebar">
+      <div class="side-head">
+        <div style="font-weight:700">Explorateur (découvert depuis les dépôts)</div>
+        <div class="row" style="margin-top:8px">
+          <select id="period" class="select">
+            <option value="ann">Annuel</option>
+            <option value="eval">Évaluation…</option>
+            <option value="tri">Trimestre…</option>
+          </select>
+          <select id="selEval" class="select" style="display:none">
+            <option value="1">Éval 1</option><option value="2">Éval 2</option>
+            <option value="3">Éval 3</option><option value="4">Éval 4</option>
+            <option value="5">Éval 5</option><option value="6">Éval 6</option>
+          </select>
+          <select id="selTri" class="select" style="display:none">
+            <option value="T1">T1 (1+2)</option>
+            <option value="T2">T2 (3+4)</option>
+            <option value="T3">T3 (5+6)</option>
+          </select>
+        </div>
+      </div>
+      <div class="tree" id="tree"><!-- rempli par JS --></div>
+    </aside>
+
+    <!-- ================== Centre ================== -->
+    <main>
+      <!-- KPIs -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <strong>KPIs <span id="kpiScope" class="muted">Annuel — Toute la région</span></strong>
+          <div class="legend muted">
+            <span>Couleur des % :</span>
+            <span class="heat-ok">≥ 75%</span>
+            <span class="heat-warn">50–74%</span>
+            <span class="heat-bad">&lt; 50%</span>
+          </div>
+        </div>
+        <div class="kpis" style="margin-top:8px">
+          <div class="kpi"><div class="label">Établissements</div><div class="n" id="kEtab">—</div></div>
+          <div class="kpi"><div class="label">AP actifs</div><div class="n" id="kAP">—</div></div>
+          <div class="kpi"><div class="label">Dépôts comptés</div><div class="n" id="kDepots">—</div></div>
+          <div class="kpi"><div class="label">Élèves (≈)</div><div class="n" id="kEleves">—</div></div>
+          <div class="kpi"><div class="label">Ens. en poste (≈)</div><div class="n" id="kEns">—</div></div>
+          <div class="kpi"><div class="label">Heures %</div><div class="n" id="kH">—</div></div>
+          <div class="kpi"><div class="label">Leçons %</div><div class="n" id="kL">—</div></div>
+          <div class="kpi"><div class="label">Leçons dig. %</div><div class="n" id="kLd">—</div></div>
+          <div class="kpi"><div class="label">TP %</div><div class="n" id="kTp">—</div></div>
+          <div class="kpi"><div class="label">TP dig. %</div><div class="n" id="kTd">—</div></div>
+          <div class="kpi"><div class="label">Réussite %</div><div class="n" id="kR">—</div></div>
+        </div>
+      </div>
+
+      <!-- Synthèse -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <strong>Disciplines de la sélection</strong>
+          <div class="row">
+            <button class="btn soft" id="btnCsv">Export CSV</button>
+            <button class="btn primary" id="btnPrint">Imprimer</button>
+          </div>
+        </div>
+        <div id="syn" style="margin-top:8px" class="empty">Sélectionne à gauche un niveau (cycle, spécialité ou classe) pour voir la synthèse.</div>
+      </div>
+
+      <!-- Carte scolaire régionale (récap) -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <strong>Carte scolaire — région</strong>
+          <div class="row">
+            <button class="btn soft" id="btnExportMap">Export CSV</button>
+            <button class="btn primary" id="btnPrintMap">Imprimer</button>
+          </div>
+        </div>
+        <div id="schoolMap" style="margin-top:8px" class="empty">Aucune donnée (sélectionne un périmètre ou laisse “Toute la région”).</div>
+      </div>
+
+      <!-- Incohérences -->
+      <div class="card">
+        <strong>Incohérences détectées</strong>
+        <div id="inc" style="margin-top:8px" class="empty">Aucune analyse encore (sélectionne un périmètre).</div>
+      </div>
+    </main>
+
+    <!-- ================ Sidebar droite : Chat + Dépôts ================ -->
+    <aside class="sidebar" style="border-left:1px solid var(--line);border-right:none">
+      <div class="side-head">
+        <div class="tabsR">
+          <div id="tabChat"   class="tab active">Chat</div>
+          <div id="tabDepots" class="tab">Dépôts reçus</div>
+        </div>
+      </div>
+
+      <!-- CHAT -->
+      <!-- CHAT -->
+<div id="paneChat" style="padding:10px">
+  <div class="wchat">
+    <div class="w-header">
+      <div class="w-avatar"><%= ((user && user.nom) || 'IPR').split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase() %></div>
+      <div>
+        <div class="w-name"><%= (user && user.nom) || '—' %> <span class="inspTag">(Inspecteur)</span></div>
+        <div class="w-sub" id="presence">Connectés : —</div>
+      </div>
+      <div style="margin-left:auto"><button class="btn" id="chatRefresh" type="button">↻</button></div>
+    </div>
+
+    <div id="msgs" class="w-msgs"></div>
+    <div id="typing" class="typing"></div>
+
+    <!-- Barre “répondre à …” -->
+    <div id="replyBar" class="w-replybar hidden" aria-live="polite">
+      <div>
+        <div class="name" id="replyName">—</div>
+        <div class="snippet" id="replySnippet">—</div>
+      </div>
+      <button class="close" id="replyCancel" type="button">Annuler</button>
+    </div>
+
+    <form id="chatForm" class="w-input" autocomplete="off">
+      <button class="icon" type="button" id="emojiBtn" title="Emoji">🙂</button>
+      <input id="chatText" type="text" placeholder="Tapez un message… (Entrée = envoyer, Shift+Entrée = ligne)">
+      <input id="chatFile" type="file" class="hidden">
+      <button class="icon" type="button" id="attachBtn" title="Joindre">📎</button>
+      <button class="send" type="submit" title="Envoyer">➤</button>
+    </form>
+
+    <div class="muted" style="margin-top:6px">Salon commun IPR ⇄ AP de l’inspection.</div>
+  </div>
+</div>
+
+
+      <!-- DEPOTS (mailbox) -->
+      <div id="paneDepots" style="display:none;padding:10px">
+        <div class="row" style="margin-bottom:6px">
+          <span class="muted">Filtré par la période & la sélection à gauche.</span>
+          <button class="btn soft" id="btnRefreshDepots" style="margin-left:auto">Rafraîchir</button>
+        </div>
+        <div id="mailList" class="scroll"></div>
+        <div id="mailEmpty" class="empty" style="display:none">Aucun dépôt trouvé pour ce périmètre.</div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ====== Overlay consultation d'un dépôt / Détails établissement ====== -->
+  <div id="ov" class="overlay">
+    <div class="panel">
+      <div class="row" style="align-items:center;margin-bottom:4px">
+        <h3 id="ovTitle">Dépôt</h3>
+        <button id="ovClose" class="closeX">Fermer</button>
+      </div>
+      <div id="ovMeta" class="muted" style="margin-bottom:8px"></div>
+
+      <div class="tabs2">
+        <div id="tabOverview" class="t active">Aperçu</div>
+        <div id="tabClasses"  class="t">Classes & modules</div>
+        <div id="tabFiles"    class="t">Pièces jointes</div>
+        <div id="tabRaw"      class="t">Brut (JSON)</div>
+      </div>
+
+      <div id="paneOverview"></div>
+      <div id="paneClasses"  style="display:none"></div>
+      <div id="paneFiles"    style="display:none"></div>
+      <div id="paneRaw"      style="display:none"><pre id="rawJson" style="white-space:pre-wrap;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px"></pre></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    /* eslint-env browser */
+  /* global io */
+    /* ========= helpers ========= */
+    const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    const pct=(d,n)=> d>0 ? (n/d*100) : 0;
+    const fmt=v=> (isFinite(v)&&v>0) ? v.toFixed(1)+'%' : '0%';
+    const heat=v=> v>=75?'heat-ok':(v>=50?'heat-warn':'heat-bad');
+
+    function printElement(el, title='Impression'){
+      const w=window.open('','_blank','width=1200,height=800');
+      const style=document.querySelector('style').outerHTML;
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title>${style}</head><body>${el.outerHTML}</body></html>`);
+      w.document.close(); w.focus(); w.print(); w.close();
+    }
+    function tableToCsv(table){
+      const rows=[...table.querySelectorAll('tr')];
+      return rows.map(tr=>[...tr.children].map(td=>{
+        const s=td.textContent.trim().replace(/\s+/g,' ');
+        return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+      }).join(';')).join('\n');
+    }
+    function downloadCsv(csv, filename){
+      const b=new Blob([csv],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);
+      const a=document.createElement('a'); a.href=u; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+    }
+
+    // ===== Période
+    const period=document.getElementById('period'), selEval=document.getElementById('selEval'), selTri=document.getElementById('selTri');
+    function currentPeriodQS(){ const m=period.value; if(m==='eval') return { evaluation:selEval.value }; if(m==='tri') return { trimestre:selTri.value }; return {}; }
+    function currentPeriodLabel(){ const m=period.value; if(m==='eval') return `Évaluation ${selEval.value}`; if(m==='tri') return selTri.value; return 'Annuel'; }
+    period.addEventListener('change', ()=>{ selEval.style.display=(period.value==='eval')?'inline-block':'none'; selTri.style.display=(period.value==='tri')?'inline-block':'none'; _activeNode && renderForNode(_activeNode); });
+    selEval.addEventListener('change', ()=> _activeNode && renderForNode(_activeNode));
+    selTri .addEventListener('change', ()=> _activeNode && renderForNode(_activeNode));
+
+    // ===== API helpers
+    async function api(path){ const r=await fetch(path,{credentials:'same-origin'}); if(!r.ok) throw new Error('HTTP'); return r.json(); }
+
+    // --- (existant) utilisé par la synthèse "form-view"
+    async function fetchByEtab(cycle,spec,qs){
+      const q=new URLSearchParams({ cycle, specialite:spec, ...(qs||{}) });
+      return api('/api/summary/by-etab?'+q.toString());
+    }
+
+    // --- API Carte scolaire
+    async function loadCarteInspection(filter, qs){
+      const q = new URLSearchParams({ ...(filter||{}), ...(qs||{}) }).toString();
+      return api('/api/carte/inspection?'+q);
+    }
+    async function openEtabDetails(etab){
+      const d = await api('/api/carte/etab?etablissement='+encodeURIComponent(etab));
+      ovTitle.textContent = `Détails — ${esc(d?.meta?.etablissement||etab)}`;
+      ovMeta.innerHTML = `<div><strong>Cycle:</strong> ${esc(d?.meta?.cycle||'—')} • <strong>Spécialité:</strong> ${esc(d?.meta?.specialite||'—')} • <strong>Année:</strong> ${esc(d?.meta?.annee||'—')}</div>`;
+
+      const effRows = (d?.effectifs||[]).map(e=>`
+        <tr>
+          <td>${esc(e.classe||'')}</td>
+          <td>${Number(e.filles)||0}</td>
+          <td>${Number(e.garcons)||0}</td>
+          <td><b>${(Number(e.filles)||0)+(Number(e.garcons)||0)}</b></td>
+        </tr>`).join('');
+
+      const staffRows = (d?.staff||[]).map(p=>`
+        <tr>
+          <td>${esc(p.nom||'')}</td>
+          <td>${esc(p.grade||'')}</td>
+          <td>${esc(p.matiere||'')}</td>
+          <td>${esc(p.statut||'')}</td>
+          <td>${(p.classes||[]).map(c=>`<span class="badge">${esc(c)}</span>`).join(' ')||'—'}</td>
+          <td>${(p.disciplines||[]).map(x=>`<span class="badge">${esc(x)}</span>`).join(' ')||'—'}</td>
+          <td>${esc(p.obs||'')}</td>
+        </tr>`).join('');
+
+      paneOverview.innerHTML = `
+        <h3 style="margin:8px 0 6px">Effectifs par classe</h3>
+        <table>
+          <thead><tr><th>Classe</th><th>Filles</th><th>Garçons</th><th>Total</th></tr></thead>
+          <tbody>${effRows || '<tr><td colspan="4" class="muted">—</td></tr>'}</tbody>
+        </table>
+        <h3 style="margin:12px 0 6px">Personnel enseignant (${(d?.staff||[]).length})</h3>
+        <table>
+          <thead><tr><th>Nom</th><th>Grade</th><th>Matière</th><th>Statut</th><th>Classes</th><th>Disciplines</th><th>Obs.</th></tr></thead>
+          <tbody>${staffRows || '<tr><td colspan="7" class="muted">—</td></tr>'}</tbody>
+        </table>
+      `;
+      rawJson.textContent = JSON.stringify(d||{}, null, 2);
+      setOvTab('overview');
+      ov.style.display='flex';
+    }
+
+    // ===== Explorateur dynamique
+    const tree=document.getElementById('tree'); let _topology=null, _activeNode=null;
+    function nodeTpl({id,label,indent=0,meta,active}){ return `<div class="node indent-${indent} ${active?'active':''}" data-id="${id}" data-meta='${JSON.stringify(meta)}'>${esc(label)}</div>`; }
+    async function buildTree(){
+      tree.innerHTML='';
+      try{ _topology = await api('/api/summary/topology'); }catch(_){ _topology={cycles:[]}; }
+      tree.insertAdjacentHTML('beforeend', nodeTpl({id:'region',label:'🌍 Toute la région',indent:0,meta:{type:'region'},active:true}));
+      _activeNode={ id:'region', meta:{type:'region'}, label:'Toute la région' };
+
+      (_topology.cycles||[]).forEach(c=>{
+        tree.insertAdjacentHTML('beforeend',nodeTpl({id:`c:${c.key}`,label:c.label||c.key,indent:1,meta:{type:'cycle',cycle:c.key}}));
+        (c.specialites||[]).forEach(s=>{
+          tree.insertAdjacentHTML('beforeend',nodeTpl({id:`c:${c.key}|s:${s.key}`,label:s.key,indent:2,meta:{type:'spec',cycle:c.key,spec:s.key}}));
+          (s.classes||[]).forEach(cl=>{
+            tree.insertAdjacentHTML('beforeend',nodeTpl({id:`c:${c.key}|s:${s.key}|cl:${cl}`,label:cl,indent:3,meta:{type:'class',cycle:c.key,spec:s.key,classe:cl}}));
+          });
+        });
+      });
+
+      tree.addEventListener('click', e=>{
+        const el=e.target.closest('.node'); if(!el) return;
+        tree.querySelectorAll('.node').forEach(n=>n.classList.remove('active'));
+        el.classList.add('active');
+        _activeNode={ id:el.dataset.id, meta:JSON.parse(el.dataset.meta||'{}'), label:el.textContent.trim() };
+        renderForNode(_activeNode);
+      });
+
+      renderForNode(_activeNode);
+
+      const depId = sessionStorage.getItem('openDepositId');
+      if (depId) { sessionStorage.removeItem('openDepositId'); openDeposit(depId); }
+    }
+
+    // ===== KPIs + Synthèse + Carte scolaire + Dépôts
+    const kScope=document.getElementById('kpiScope');
+    const kE=document.getElementById('kEtab'), kAP=document.getElementById('kAP'), kD=document.getElementById('kDepots'),
+          kEl=document.getElementById('kEleves'), kEns=document.getElementById('kEns'),
+          kH=document.getElementById('kH'), kL=document.getElementById('kL'), kLd=document.getElementById('kLd'),
+          kTp=document.getElementById('kTp'), kTd=document.getElementById('kTd'), kR=document.getElementById('kR');
+
+    const syn=document.getElementById('syn'), inc=document.getElementById('inc'), mapBox=document.getElementById('schoolMap');
+
+    function headForm(labelFirst){ return `<thead>
+      <tr>
+        <th rowspan="2">${labelFirst}</th>
+        <th colspan="3">Couverture des heures</th>
+        <th colspan="6">Couverture des programmes</th>
+        <th colspan="6">Réalisation des TP</th>
+        <th colspan="3">Réussite des élèves</th>
+        <th colspan="3">Assiduité et ponctualité des enseignants</th>
+      </tr>
+      <tr>
+        <th>Heures dues</th><th>Heures faites</th><th>%</th>
+        <th>Nbre de leçons prévues</th><th>Nbre de leçons faites</th><th>%</th>
+        <th>Nbre de leçons digitalisées prévues</th><th>Nbre de leçons digitalisées faites</th><th>%</th>
+        <th>Nbre prévu</th><th>Nbre fait</th><th>%</th>
+        <th>Nbre digitalisé prévu</th><th>Nbre digitalisé fait</th><th>%</th>
+        <th>Nbre d'élèves ayant composé</th><th>Nbre de moy ≥ 10/20</th><th>% de réussite</th>
+        <th>Effectif des enseignants</th><th>En poste</th><th>%</th>
+      </tr>
+    </thead>`; }
+
+    function discRow(d){
+      const H=pct(d.Hd||0,d.Hf||0), L=pct(d.Lp||0,d.Lf||0), Ld=pct(d.Ldp||0,d.Ldf||0),
+            Tp=pct(d.Tp||0,d.Tf||0), Td=pct(d.Tdp||0,d.Tdf||0), R=pct(d.Comp||0,d.M10||0), A=pct(d.EffT||0,d.EffP||0);
+      return `<tr>
+        <td>${esc(d.nom||d.discipline||'')}</td>
+        <td>${d.Hd||0}</td><td>${d.Hf||0}</td><td class="${heat(H)}">${fmt(H)}</td>
+        <td>${d.Lp||0}</td><td>${d.Lf||0}</td><td class="${heat(L)}">${fmt(L)}</td>
+        <td>${d.Ldp||0}</td><td>${d.Ldf||0}</td><td class="${heat(Ld)}">${fmt(Ld)}</td>
+        <td>${d.Tp||0}</td><td>${d.Tf||0}</td><td class="${heat(Tp)}">${fmt(Tp)}</td>
+        <td>${d.Tdp||0}</td><td>${d.Tdf||0}</td><td class="${heat(Td)}">${fmt(Td)}</td>
+        <td>${d.Comp||0}</td><td>${d.M10||0}</td><td class="${heat(R)}">${fmt(R)}</td>
+        <td>${d.EffT||0}</td><td>${d.EffP||0}</td><td class="${heat(A)}">${fmt(A)}</td>
+      </tr>`;
+    }
+
+    /* ---------- Helpers staff / statut EN POSTE ---------- */
+    function getStaffArray(row){
+      if (Array.isArray(row.staff)) return row.staff;
+      if (Array.isArray(row.enseignants)) return row.enseignants;
+      if (Array.isArray(row.personnel)) return row.personnel;
+      if (Array.isArray(row.teachers)) return row.teachers;
+      return [];
+    }
+    function isEnPoste(p){
+      if (typeof p?.enPoste === 'boolean') return p.enPoste;
+      const s = (p?.statut || p?.status || '')
+        .toString()
+        .normalize('NFD').replace(/\p{Diacritic}/gu,'')
+        .trim()
+        .toLowerCase();
+      const positif = /(titulaire|en poste|actif|present|affecte)/.test(s);
+      const negatif = /(vacataire|absent|retire|sorti)/.test(s);
+      return positif && !negatif;
+    }
+    /* ----------------------------------------------------- */
+
+    /* ===== Cache + fallback par établissement ===== */
+    const etabCache = new Map(); // nom -> {tot, pos}
+    async function getEtabStaffCounts(name){
+      if (!name) return {tot:0, pos:0};
+      if (etabCache.has(name)) return etabCache.get(name);
+      try{
+        const d = await api('/api/carte/etab?etablissement='+encodeURIComponent(name));
+        const staff = getStaffArray(d) || getStaffArray(d?.data||{}) || d?.staff || [];
+        const tot = Array.isArray(staff) ? staff.length : 0;
+        const pos = Array.isArray(staff) ? staff.filter(isEnPoste).length : 0;
+        const val = {tot, pos};
+        etabCache.set(name, val);
+        return val;
+      }catch(_){
+        const val = {tot:0, pos:0};
+        etabCache.set(name, val);
+        return val;
+      }
+    }
+
+    async function renderForNode(node){
+      kScope.textContent = `${currentPeriodLabel()} — ${node.meta.type==='region'?'Toute la région':node.label}`;
+
+      const qs=currentPeriodQS();
+      const filter = {};
+      if(node.meta.type==='cycle'){ filter.cycle = node.meta.cycle; }
+      if(node.meta.type==='spec'){  filter.cycle = node.meta.cycle; filter.specialite = node.meta.spec; }
+      if(node.meta.type==='class'){ filter.cycle = node.meta.cycle; filter.specialite = node.meta.spec; }
+
+      // KPIs (historique)
+      try{
+        const K = await api('/api/summary/kpis?'+new URLSearchParams({ ...qs, ...filter }).toString());
+        kE.textContent   = K.etablissements ?? '—';
+        kAP.textContent  = K.apActifs ?? '—';
+        kD.textContent   = K.depots ?? '—';
+        kEl.textContent  = K.effectifsRegion?.eleves ?? '—';
+        kEns.textContent = K.effectifsRegion?.enseignantsEnPoste ?? '—';
+        kH.textContent   = isFinite(K.taux?.couvertureHeures)?K.taux.couvertureHeures.toFixed(1)+'%':'—';
+        kL.textContent   = isFinite(K.taux?.leconsFaites)?K.taux.leconsFaites.toFixed(1)+'%':'—';
+        kLd.textContent  = isFinite(K.taux?.leconsDigitalFaites)?K.taux.leconsDigitalFaites.toFixed(1)+'%':'—';
+        kTp.textContent  = isFinite(K.taux?.tpFaits)?K.taux.tpFaits.toFixed(1)+'%':'—';
+        kTd.textContent  = isFinite(K.taux?.tpDigitalFaits)?K.taux.tpDigitalFaits.toFixed(1)+'%':'—';
+        kR.textContent   = isFinite(K.taux?.reussite)?K.taux.reussite.toFixed(1)+'%':'—';
+      }catch(_){}
+
+      /* ===== Carte scolaire ===== */
+      try{
+        const dataCarte = await loadCarteInspection(filter, qs);
+
+        if (!dataCarte || !dataCarte.rows || !dataCarte.rows.length){
+          mapBox.innerHTML = '<div class="empty">Aucune donnée.</div>';
+        } else {
+          const S = dataCarte.stats || {};
+          if (S.etablissements != null) kE.textContent  = S.etablissements;
+          if (S.apActifs       != null) kAP.textContent = S.apActifs;
+
+          const rows = [...dataCarte.rows].sort((a,b)=> (a.etablissement||'').localeCompare(b.etablissement||''));
+
+          // Élèves
+          const elevesTotal = (S.eleves && S.eleves.total != null)
+            ? S.eleves.total
+            : rows.reduce((sum,r)=>{
+                const f = Number(r.filles)||0, g = Number(r.garcons)||0;
+                const e = Number(r.eleves);
+                return sum + (Number.isFinite(e) && e>0 ? e : (f+g));
+              }, 0);
+          kEl.textContent = elevesTotal;
+
+          // ===== Staff : construit un dictionnaire pour la table et les KPI
+          const staffCounts = {};
+          await Promise.all(rows.map(async r=>{
+            const name = r.etablissement || '';
+            let tot=0, pos=0;
+
+            const staffInline = getStaffArray(r);
+            if (staffInline.length){
+              tot = staffInline.length;
+              pos = staffInline.filter(isEnPoste).length;
+            }else{
+              const c = await getEtabStaffCounts(name); // fallback API détail
+              tot = c.tot; pos = c.pos;
+            }
+            if (!tot) tot = Number(r.enseignantsTotaux)||0;
+            if (!pos) pos = Number(r.enseignantsEnPoste)||0;
+
+            staffCounts[name] = {tot, pos};
+          }));
+
+          const enPosteTotal = (S.enseignants && S.enseignants.enPoste != null)
+            ? S.enseignants.enPoste
+            : Object.values(staffCounts).reduce((s,x)=> s + (Number(x?.pos)||0), 0);
+          kEns.textContent = enPosteTotal;
+
+          // Tableau
+          mapBox.innerHTML = `
+            <table id="tblMap">
+              <thead>
+                <tr>
+                  <th>Établissement</th>
+                  <th>Cycles ouverts</th>
+                  <th>Classes ouvertes</th>
+                  <th>Filles</th>
+                  <th>Garçons</th>
+                  <th>Élèves</th>
+                  <th>Ens. totaux</th>
+                  <th>En poste</th>
+                  <th>AP #</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(r=>{
+                  const cycles  = Array.isArray(r.cycles)? r.cycles : (r.cycle?[r.cycle]:[]);
+                  const classes = Array.isArray(r.classes)? r.classes : [];
+                  const apCount = Array.isArray(r.ap)? r.ap.length : (Number(r.ap)||0);
+                  const filles  = Number(r.filles)||0;
+                  const garcons = Number(r.garcons)||0;
+                  const eleves  = Number(r.eleves) || (filles+garcons);
+
+                  const sc = staffCounts[r.etablissement] || {tot:(Number(r.enseignantsTotaux)||0), pos:(Number(r.enseignantsEnPoste)||0)};
+
+                  const etab    = esc(r.etablissement||'—');
+                  return `
+                    <tr>
+                      <td>${etab}</td>
+                      <td>${esc(cycles.join(', '))}</td>
+                      <td>${esc(classes.join(', '))}</td>
+                      <td>${filles}</td>
+                      <td>${garcons}</td>
+                      <td><b>${eleves}</b></td>
+                      <td>${sc.tot||0}</td>
+                      <td>${sc.pos||0}</td>
+                      <td>${apCount}</td>
+                      <td><button class="btn soft det" data-etab="${etab}">Détails</button></td>
+                    </tr>`;
+                }).join('')}
+              </tbody>
+            </table>`;
+
+          document.getElementById('btnExportMap').onclick =
+            ()=> downloadCsv(tableToCsv(document.getElementById('tblMap')), 'carte_scolaire.csv');
+          document.getElementById('btnPrintMap').onclick  =
+            ()=> printElement(document.getElementById('tblMap'), 'Carte scolaire — inspection');
+
+          mapBox.querySelectorAll('.det').forEach(b=>{
+            b.addEventListener('click', ()=> openEtabDetails(b.dataset.etab));
+          });
+        }
+      }catch(e){
+        mapBox.innerHTML = '<div class="empty">Carte scolaire indisponible.</div>';
+      }
+
+      // ===== Synthèse (form-view) =====
+      if (node.meta.type==='region'){
+        syn.innerHTML='<div class="empty">Sélectionne un cycle, une spécialité ou une classe à gauche.</div>';
+        inc.innerHTML='<div class="empty">Aucune analyse (périmètre trop large).</div>';
+      }else{
+        let data=[];
+        const qsStr = (extra)=> new URLSearchParams({ ...(qs||{}), ...(extra||{}) }).toString();
+        try{
+          if (node.meta.type==='cycle'){
+            const cyc = node.meta.cycle;
+            const S = (_topology?.cycles||[]).find(x=>x.key===cyc)?.specialites||[];
+            for (const s of S){
+              const res = await api('/api/summary/form-view?'+qsStr({ cycle:cyc, specialite:s.key }));
+              if (Array.isArray(res)) data.push(...res); else data.push(res);
+            }
+          }else if (node.meta.type==='spec'){
+            const res = await api('/api/summary/form-view?'+qsStr({ cycle:node.meta.cycle, specialite:node.meta.spec }));
+            data = Array.isArray(res)? res : [res];
+          }else{
+            const res = await api('/api/summary/form-view?'+qsStr({ cycle:node.meta.cycle, specialite:node.meta.spec, classe:node.meta.classe }));
+            data = Array.isArray(res)? res : [res];
+          }
+        }catch(_){ data=[]; }
+
+        if(!data.length){
+          syn.innerHTML='<div class="empty">Aucune donnée pour ce périmètre.</div>';
+          inc.innerHTML='<div class="empty">—</div>';
+        }else{
+          const blocks = data.map(cls=>{
+            const rows = (cls.disciplines||[]).map(d=>discRow(d)).join('');
+
+            const T = cls.total || {};
+            const sums = sumDiscs(cls.disciplines || []);
+
+            const effHint = hintEffectifClasse(cls);
+            const capFallback = capComposeTotaux(T.Comp, T.M10, effHint);
+
+            const compCap = (sums.CompMax > 0) ? sums.CompMax : capFallback.comp;
+            const m10Cap  = Math.min((sums.M10Max > 0 ? sums.M10Max : capFallback.m10), compCap);
+
+            const H  = pct(T.Hd||0,  T.Hf||0);
+            const L  = pct(T.Lp||0,  T.Lf||0);
+            const Ld = pct(T.Ldp||0, T.Ldf||0);
+            const Tp = pct(T.Tp||0,  T.Tf||0);
+            const Td = pct(T.Tdp||0, T.Tdf||0);
+            const R  = pct(compCap||0, m10Cap||0);
+            const A  = pct(T.EffT||0, T.EffP||0);
+
+            return `<details open style="margin-bottom:10px">
+  <summary><strong>${esc(cls.classe||'Classe')}</strong> <span class="muted">(${cls.etablissements||0} établ.)</span></summary>
+  <table class="tblSynth">
+    ${headForm('Module / Discipline')}
+    <tbody>
+      ${rows}
+      <tr style="background:#f6f6f6;font-weight:600">
+        <td>Total ${esc(cls.classe||'')}</td>
+        <td>${T.Hd||0}</td><td>${T.Hf||0}</td><td class="${heat(H)}">${fmt(H)}</td>
+        <td>${T.Lp||0}</td><td>${T.Lf||0}</td><td class="${heat(L)}">${fmt(L)}</td>
+        <td>${T.Ldp||0}</td><td>${T.Ldf||0}</td><td class="${heat(Ld)}">${fmt(Ld)}</td>
+        <td>${T.Tp||0}</td><td>${T.Tf||0}</td><td class="${heat(Tp)}">${fmt(Tp)}</td>
+        <td>${T.Tdp||0}</td><td>${T.Tdf||0}</td><td class="${heat(Td)}">${fmt(Td)}</td>
+        <td>${compCap||0}</td><td>${m10Cap||0}</td><td class="${heat(R)}">${fmt(R)}</td>
+        <td>${T.EffT||0}</td><td>${T.EffP||0}</td><td class="${heat(A)}">${fmt(A)}</td>
+      </tr>
+    </tbody>
+  </table>
+</details>`;
+          });
+
+          syn.innerHTML = blocks;
+
+          document.getElementById('btnCsv').onclick=()=>{
+            const firstTbl=document.querySelector('.tblSynth'); if(!firstTbl) return;
+            downloadCsv(tableToCsv(firstTbl), 'synthese.csv');
+          };
+          document.getElementById('btnPrint').onclick=()=>{
+            const container=document.getElementById('syn'); printElement(container, 'Synthèse');
+          };
+
+          const miss=[], foreign=[];
+          data.forEach(cls=> (cls.disciplines||[]).forEach(d=>{ if(d.missing) miss.push({c:cls.classe,n:d.nom}); if(d.foreign) foreign.push({c:cls.classe,n:d.nom}); }));
+          if (!miss.length && !foreign.length) inc.innerHTML='<div class="empty">Aucune incohérence détectée.</div>';
+          else inc.innerHTML = `
+            <div style="display:grid;gap:10px">
+              ${miss.length? `<div><strong>Manquantes</strong><ul>${miss.map(m=>`<li>${esc(m.c)} — <em>${esc(m.n)}</em></li>`).join('')}</ul></div>`:''}
+              ${foreign.length? `<div><strong>Étrangères</strong><ul>${foreign.map(m=>`<li>${esc(m.c)} — <em>${esc(m.n)}</em></li>`).join('')}</ul></div>`:''}
+            </div>`;
+        }
+      }
+
+      // mailbox dépôts
+      await loadDeposits(filter, qs);
+    }
+
+    /* ===== Dépôts (mailbox) ===== */
+    const mailList = document.getElementById('mailList');
+    const mailEmpty = document.getElementById('mailEmpty');
+
+    async function loadDeposits(filter, qs){
+      const q = new URLSearchParams({ ...(filter||{}), ...(qs||{}) });
+      try{
+        const res = await api('/api/summary/deposits?'+q.toString());
+        const rows = res.rows || [];
+        mailList.innerHTML = '';
+        if(!rows.length){ mailEmpty.style.display='block'; return; }
+        mailEmpty.style.display='none';
+        rows.forEach(r=>{
+          const when = new Date(r.createdAt).toLocaleString();
+          const div = document.createElement('div');
+          div.className='mail';
+          div.dataset.id = r.id;
+          div.innerHTML = `
+            <div class="sujet">${esc(r.etablissement)} — <span class="muted">Éval ${r.evaluation}</span>
+              <span class="badge">${esc(r.cycle)}</span>
+              <span class="badge">${esc(r.specialite)}</span>
+            </div>
+            <div class="sub">${esc(r.animateur||'—')} • ${when} • ${r.classes||0} classe(s)</div>`;
+          div.addEventListener('click', ()=> openDeposit(r.id));
+          mailList.appendChild(div);
+        });
+      }catch(e){
+        mailList.innerHTML = '<div class="empty">Erreur chargement dépôts.</div>';
+      }
+    }
+    document.getElementById('btnRefreshDepots').onclick = ()=> _activeNode && renderForNode(_activeNode);
+
+    /* ===== Overlay dépôt ===== */
+    const ov = document.getElementById('ov');
+    const ovClose = document.getElementById('ovClose');
+    const ovTitle = document.getElementById('ovTitle');
+    const ovMeta  = document.getElementById('ovMeta');
+    const paneOverview = document.getElementById('paneOverview');
+    const paneClasses  = document.getElementById('paneClasses');
+    const paneFiles    = document.getElementById('paneFiles');
+    const paneRaw      = document.getElementById('paneRaw');
+    const rawJson      = document.getElementById('rawJson');
+
+    const tabOverview=document.getElementById('tabOverview');
+    const tabClasses =document.getElementById('tabClasses');
+    const tabFiles   =document.getElementById('tabFiles');
+    const tabRaw     =document.getElementById('tabRaw');
+
+    function setOvTab(which){
+      [tabOverview,tabClasses,tabFiles,tabRaw].forEach(t=>t.classList.remove('active'));
+      [paneOverview,paneClasses,paneFiles,paneRaw].forEach(p=>p.style.display='none');
+      const map={overview:[tabOverview,paneOverview], classes:[tabClasses,paneClasses], files:[tabFiles,paneFiles], raw:[tabRaw,paneRaw]};
+      map[which][0].classList.add('active'); map[which][1].style.display='';
+    }
+    tabOverview.onclick=()=>setOvTab('overview');
+    tabClasses.onclick =()=>setOvTab('classes');
+    tabFiles.onclick   =()=>setOvTab('files');
+    tabRaw.onclick     =()=>setOvTab('raw');
+
+    ovClose.onclick = ()=> ov.style.display='none';
+    ov.addEventListener('click', (e)=>{ if(e.target===ov) ov.style.display='none'; });
+
+    // ---- helpers “brut → nombres”
+    const getN = (obj, ...keys) => {
+      for (const k of keys) {
+        const v = obj?.[k];
+        if (v !== undefined && v !== null && String(v).trim?.()!=='') return Number(v)||0;
+      }
+      return 0;
+    };
+    function sumDiscs(discs){
+      const T = {
+        Hd:0,Hf:0, Lp:0,Lf:0, Ldp:0,Ldf:0, Tp:0,Tf:0, Tdp:0,Tdf:0,
+        Comp:0, M10:0, EffT:0, EffP:0,
+        CompMax:0, M10Max:0
+      };
+      discs.forEach(d=>{
+        const hd  = getN(d,'hD','Hd','heuresDues');
+        const hf  = getN(d,'hF','Hf','heuresFaites');
+        const lp  = getN(d,'lp','Lp','leconsPrevues');
+        const lf  = getN(d,'lf','Lf','leconsFaites');
+        const ldp = getN(d,'ldp','Ldp','leconsDigPrevues','leconsDigitaliseesPrevues');
+        const ldf = getN(d,'ldf','Ldf','leconsDigFaites','leconsDigitaliseesFaites');
+        const tp  = getN(d,'tp','Tp','tpPrevus');
+        const tf  = getN(d,'tf','Tf','tpFaits');
+        const tdp = getN(d,'tdp','Tdp','tpDigPrevus','tpDigitalisesPrevus');
+        const tdf = getN(d,'tdf','Tdf','tpDigFaits','tpDigitalisesFaits');
+
+        const comp = getN(d,'comp','Comp','elevesComposes','eleves');
+        const m10  = getN(d,'m10','M10');
+
+        const effT = getN(d,'effTot','EffT','ensTot','enseignantsTotaux');
+        const effP = getN(d,'effPos','EffP','ensPoste','enseignantsEnPoste');
+
+        T.Hd+=hd; T.Hf+=hf; T.Lp+=lp; T.Lf+=lf; T.Ldp+=ldp; T.Ldf+=ldf;
+        T.Tp+=tp; T.Tf+=tf; T.Tdp+=tdp; T.Tdf+=tdf;
+
+        T.Comp+=comp; T.M10+=m10;
+        T.EffT+=effT; T.EffP+=effP;
+
+        if (comp > T.CompMax) T.CompMax = comp;
+        if (m10  > T.M10Max)  T.M10Max  = m10;
+      });
+      return T;
+    }
+
+    // ===== Helpers anti double-compte
+    function hintEffectifClasse(cls){
+      const tryVals = [
+        cls?.eleves, cls?.effectif, cls?.totalEleves, cls?.total?.Eleves, cls?.total?.eleves,
+        Array.isArray(cls?.effectifs)
+          ? cls.effectifs.reduce((s,e)=> s + Number(e?.total ?? ((e?.filles||0)+(e?.garcons||0))), 0)
+          : 0
+      ];
+      for (const v of tryVals){
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return null;
+    }
+    function capComposeTotaux(compBrut, m10Brut, effectifClasse){
+      let comp = Number(compBrut||0);
+      let m10  = Number(m10Brut||0);
+      if (Number.isFinite(effectifClasse) && effectifClasse > 0){
+        comp = Math.min(comp, effectifClasse);
+      }
+      m10 = Math.min(m10, comp);
+      return { comp, m10 };
+    }
+
+    function fileRow(f){
+      const row = document.createElement('div');
+      row.className = 'fileRow';
+      const url = f.path.startsWith('/uploads') ? f.path : '/uploads/'+f.path.replace(/^\/+/,'');
+
+      row.innerHTML = `
+        📄 <a href="${esc(url)}" target="_blank" rel="noopener">${esc(f.name||'fichier')}</a>
+        <button class="btn soft del">Supprimer</button>
+      `;
+      row.querySelector('.del').addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        if (!confirm('Supprimer définitivement ce fichier ?')) return;
+        try{
+          const qp = new URLSearchParams({ p: f.path.replace(/^\/?uploads\/?/,'') });
+          const resp = await fetch('/api/uploads?'+qp.toString(), { method:'DELETE', credentials:'same-origin' });
+          const j = await resp.json();
+          if (!resp.ok || !j.ok) throw new Error(j.error||'delete failed');
+          row.remove();
+        }catch(err){
+          alert('Suppression impossible: '+(err.message||'')); 
+        }
+      });
+      return row;
+    }
+
+    function classTable(c){
+      const discs = Array.isArray(c.disciplines) ? c.disciplines
+                   : (Array.isArray(c.modules) ? c.modules : []);
+
+      const rows = discs.map(d=>discRow({
+        nom: d.discipline||d.nom||d.name,
+        Hd:getN(d,'hD','Hd','heuresDues'),
+        Hf:getN(d,'hF','Hf','heuresFaites'),
+        Lp:getN(d,'lp','Lp','leconsPrevues'),
+        Lf:getN(d,'lf','Lf','leconsFaites'),
+        Ldp:getN(d,'ldp','Ldp','leconsDigPrevues','leconsDigitaliseesPrevues'),
+        Ldf:getN(d,'ldf','Ldf','leconsDigFaites','leconsDigitaliseesFaites'),
+        Tp:getN(d,'tp','Tp','tpPrevus'),
+        Tf:getN(d,'tf','Tf','tpFaits'),
+        Tdp:getN(d,'tdp','Tdp','tpDigPrevus','tpDigitalisesPrevus'),
+        Tdf:getN(d,'tdf','Tdf','tpDigFaits','tpDigitalisesFaits'),
+        Comp:getN(d,'comp','Comp','elevesComposes','eleves'),
+        M10:getN(d,'m10','M10'),
+        EffT:getN(d,'effTot','EffT','ensTot'),
+        EffP:getN(d,'effPos','EffP','ensPoste')
+      })).join('');
+
+      const T = sumDiscs(discs);
+
+      // Max anti double-compte
+      let compCap = T.CompMax;
+      let m10Cap  = Math.min(T.M10Max, compCap);
+
+      // Fallback : borne par effectif saisi sur la classe (F/G)
+      if (!compCap || compCap <= 0) {
+        const hintFromClass = (Number(c?.F||c?.filles||0) + Number(c?.G||c?.garcons||0)) || null;
+        const fallback = capComposeTotaux(T.Comp, T.M10, hintFromClass);
+        compCap = fallback.comp;
+        m10Cap  = Math.min(fallback.m10, compCap);
+      }
+
+      const H=pct(T.Hd||0,T.Hf||0), L=pct(T.Lp||0,T.Lf||0), Ld=pct(T.Ldp||0,T.Ldf||0),
+            Tp=pct(T.Tp||0,T.Tf||0), Td=pct(T.Tdp||0,T.Tdf||0),
+            R=pct(compCap||0,m10Cap||0), A=pct(T.EffT||0,T.EffP||0);
+
+      return `<details open style="margin:8px 0">
+        <summary><strong>${esc(c.nom||'Classe')}</strong> <span class="muted">(${discs.length} module(s))</span></summary>
+        <table>${headForm('Module / Discipline')}<tbody>
+          ${rows}
+          <tr style="background:#f6f6f6;font-weight:600">
+            <td>Total ${esc(c.nom||'')}</td>
+            <td>${T.Hd}</td><td>${T.Hf}</td><td class="${heat(H)}">${fmt(H)}</td>
+            <td>${T.Lp}</td><td>${T.Lf}</td><td class="${heat(L)}">${fmt(L)}</td>
+            <td>${T.Ldp}</td><td>${T.Ldf}</td><td class="${heat(Ld)}">${fmt(Ld)}</td>
+            <td>${T.Tp}</td><td>${T.Tf}</td><td class="${heat(Tp)}">${fmt(Tp)}</td>
+            <td>${T.Tdp}</td><td>${T.Tdf}</td><td class="${heat(Td)}">${fmt(Td)}</td>
+            <td>${compCap||0}</td><td>${m10Cap||0}</td><td class="${heat(R)}">${fmt(R)}</td>
+            <td>${T.EffT}</td><td>${T.EffP}</td><td class="${heat(A)}">${fmt(A)}</td>
+          </tr>
+        </tbody></table>
+      </details>`;
+    }
+
+    async function openDeposit(id){
+      try{
+
+        const d = await api('/api/summary/deposits/'+id);
+        ovTitle.textContent = `${d.etablissement} — Éval ${d.evaluation}`;
+        ovMeta.innerHTML = `<div><strong>Cycle:</strong> ${esc(d.cycle)} • <strong>Spécialité:</strong> ${esc(d.specialite)} • <strong>AP:</strong> ${esc(d.animateur||'—')}</div>
+          <div><strong>Créé le:</strong> ${new Date(d.createdAt).toLocaleString()} • <strong>Année:</strong> ${esc(d.annee||'—')}</div>`;
+
+        const nbClasses = (d.classes||[]).length;
+        const nbFichiers = (d.files||[]).length;
+        paneOverview.innerHTML = `<div class="card"><div><strong>${esc(d.etablissement)}</strong></div>
+          <div class="muted">Éval ${esc(d.evaluation)} • ${nbClasses} classe(s) • ${nbFichiers} fichier(s)</div></div>`;
+
+        paneClasses.innerHTML = (d.classes||[]).map(classTable).join('') || '<div class="empty">Aucune classe.</div>';
+
+        paneFiles.innerHTML = '';
+        if (!d.files || !d.files.length){ paneFiles.innerHTML = '<div class="empty">Aucun fichier.</div>'; }
+        else d.files.forEach(f=> paneFiles.appendChild(fileRow(f)));
+
+        rawJson.textContent = JSON.stringify(d, null, 2);
+
+        setOvTab('overview');
+        ov.style.display='flex';
+      }catch(e){ alert('Erreur ouverture du dépôt.'); }
+    }
+
+// ===== Chat (socket.io) — AP aligné sur IPR
+
+// ===== Chat (socket.io) — rendu AP (WhatsApp-like) =====
+const CONNECTED_USER = <%- JSON.stringify({
+  id:  (user && user.id) || '',
+  nom: (user && user.nom) || '',
+  etab: (user && user.etab) || '',
+  role: 'insp',
+  inspection: (user && user.inspection) || ''
+}) %>;
+
+// DOM
+const msgsEl     = document.getElementById('msgs');
+const chatFormEl = document.getElementById('chatForm');
+const chatTextEl = document.getElementById('chatText');
+const presenceEl = document.getElementById('presence');
+const typingEl   = document.getElementById('typing');
+
+const replyBar   = document.getElementById('replyBar');
+const replyName  = document.getElementById('replyName');
+const replySnip  = document.getElementById('replySnippet');
+const replyCancel= document.getElementById('replyCancel');
+
+const hhmm = ts => new Date(ts||Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+const dayKey = ts => { const d=new Date(ts||Date.now()); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); };
+const _esc = (typeof esc==='function') ? esc : (s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let lastDayKey = '';
+let REPLY_TARGET = null;
+
+// Reply bar
+function showReplyBar(target){
+  REPLY_TARGET = target;
+  replyName.textContent = target?.from || '—';
+  replySnip.textContent = (target?.text || '').slice(0, 160);
+  replyBar.classList.remove('hidden');
+}
+function hideReplyBar(){
+  REPLY_TARGET = null;
+  replyBar.classList.add('hidden');
+  replyName.textContent = '—';
+  replySnip.textContent = '—';
+}
+replyCancel?.addEventListener('click', hideReplyBar);
+
+// Aller au message cité
+function jumpToMessage(id){
+  if(!id) return;
+  const el = msgsEl.querySelector(`[data-mid="${CSS.escape(id)}"]`);
+  if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  el.classList.add('flash');
+  setTimeout(()=> el.classList.remove('flash'), 1800);
+}
+
+// Rendu d'un message
+// === Rendu d'un message (unique)
+function initialsOf(name){
+  const clean = String(name||'').trim()
+    .normalize('NFD').replace(/\p{Diacritic}/gu,'');
+  const m = clean.match(/\p{L}/u);
+  return (m ? m[0] : '?').toUpperCase();
+}
+
+function addMsg(m){
+  if(!msgsEl) return;
+  const ts = m.ts || m.createdAt || Date.now();
+  const k  = dayKey(ts);
+  if(k!==lastDayKey){
+    msgsEl.insertAdjacentHTML('beforeend', `<div class="w-day">${new Date(ts).toLocaleDateString()}</div>`);
+    lastDayKey = k;
+  }
+
+  const fromName = m.from || m?.auteur?.nom || '—';
+  const authorId = m.uid || m.userId || m.auteur?.id || m.auteurId || m.fromId || '';
+  const mine = authorId ? (authorId === CONNECTED_USER.id) : (fromName === CONNECTED_USER.nom);
+
+  const q = (m.replyTo && (m.replyTo.text || m.replyTo.from)) ? `
+    <div class="w-quote" data-ref="${_esc(m.replyTo.id||'')}" title="Afficher le message cité">
+      <div class="q-name">${_esc(m.replyTo.from || '—')}</div>
+      <div class="q-text">${_esc((m.replyTo.text||'').slice(0,160))}</div>
+    </div>` : '';
+
+  const avatarHTML = mine ? '' : `<div class="w-avatar-sm" aria-hidden="true">${initialsOf(fromName)}</div>`;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'w-msg ' + (mine ? 'mine' : 'theirs');
+  wrap.dataset.mid = m.id || m._id || String(ts);
+
+  wrap.innerHTML = `
+    ${avatarHTML}
+    <div class="w-bubble">
+      <div class="w-from">${_esc(mine ? 'Moi' : fromName)}</div>
+      ${q}
+      <div class="w-text">${_esc(m.text || m.texte || '')}</div>
+      <div class="w-meta"><span class="w-time">${hhmm(ts)}</span>${mine?'<span class="w-ticks">✓✓</span>':''}</div>
+    </div>`;
+  msgsEl.appendChild(wrap);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+
+// Click sur message : armer une réponse / ouvrir la citation
+msgsEl?.addEventListener('click', (e)=>{
+  const msg = e.target.closest('.w-msg');
+  if(!msg) return;
+  const quote = e.target.closest('.w-quote');
+  if(quote && quote.dataset.ref){ jumpToMessage(quote.dataset.ref); return; }
+
+  const id   = msg.dataset.mid || '';
+  const from = msg.querySelector('.w-from')?.textContent?.replace(/^Moi$/,'Vous') || '—';
+  const text = msg.querySelector('.w-text')?.textContent || '';
+  showReplyBar({ id, from, text });
+  chatTextEl?.focus();
+});
+
+// Socket.io
+let socket;
+try{
+  socket = io({
+    path: '/socket.io',
+    transports: ['websocket','polling'],
+    withCredentials: true,
+    auth: { user: CONNECTED_USER }
+  });
+}catch(e){ console.warn('socket.io indisponible', e); }
+
+if (socket){
+  socket.on('connect', ()=>{
+    presenceEl && (presenceEl.textContent = 'Connectés : —');
+    socket.emit('chat:join', { inspection: CONNECTED_USER.inspection });
+  });
+  socket.on('disconnect', ()=> presenceEl && (presenceEl.textContent = 'Hors ligne'));
+  socket.on('connect_error', ()=> chatTextEl && (chatTextEl.disabled = true));
+
+  socket.on('chat:history', list=>{ msgsEl.innerHTML=''; lastDayKey=''; (Array.isArray(list)?list:[]).forEach(addMsg); });
+  socket.on('chat:new', addMsg);
+  socket.on('chat:error', e=> alert(e?.message||e?.error||'Erreur chat'));
+  socket.on('presence:update', n=> presenceEl && (presenceEl.textContent = `Connectés : ${n}`));
+
+  // typing
+  let typingClear;
+  socket.on('chat:typing', payload=>{
+    const from = payload?.from||'Quelqu’un';
+    if(from === CONNECTED_USER.nom) return;
+    typingEl.textContent = payload?.typing ? `${from} est en train d’écrire…` : '';
+    clearTimeout(typingClear);
+    if(payload?.typing) typingClear = setTimeout(()=> typingEl.textContent='', 1200);
+  });
+
+  // refresh manuel
+  document.getElementById('chatRefresh')?.addEventListener('click', ()=>{
+    socket.emit('chat:join', { inspection: CONNECTED_USER.inspection });
+  });
+}
+
+// Emit “typing”
+if (chatTextEl && socket){
+  let typingTimer;
+  chatTextEl.addEventListener('input', ()=>{
+    socket.emit('chat:typing', { typing:true, from: CONNECTED_USER.nom });
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(()=> socket.emit('chat:typing', { typing:false, from: CONNECTED_USER.nom }), 800);
+  });
+}
+// Enter pour envoyer (Shift+Enter = saut de ligne)
+chatTextEl?.addEventListener('keydown', (e)=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); chatFormEl?.requestSubmit(); }
+});
+// Envoi message (+ éventuelle citation)
+chatFormEl?.addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const text = (chatTextEl?.value||'').trim();
+  if(!text || !socket) return;
+
+  const payload = {
+    text,
+    ts: Date.now(),
+    client_msg_id: (crypto?.randomUUID?.() || (Date.now() + '-' + Math.random()))
+  };
+  if (REPLY_TARGET){
+    payload.replyTo = { id: REPLY_TARGET.id||'', from: REPLY_TARGET.from||'', text: REPLY_TARGET.text||'' };
+  }
+
+  // on efface tout de suite (le serveur dédoublonne avec client_msg_id)
+  chatTextEl.value = '';
+  hideReplyBar();
+
+  // ack optionnel si ton serveur le renvoie (sinon ça ne gêne pas)
+  socket.emit('chat:send', payload, (ack)=>{
+    if (ack?.error) {
+      chatTextEl.value = text; // on restaure si erreur serveur
+      alert('Envoi échoué: ' + ack.error);
+    }
+  });
+});
+
+
+
+// petits plus
+document.getElementById('emojiBtn')?.addEventListener('click', ()=>{
+  chatTextEl.value += (chatTextEl.value ? ' ' : '') + '🙂';
+  chatTextEl.focus();
+});
+document.getElementById('attachBtn')?.addEventListener('click', ()=>{
+  document.getElementById('chatFile')?.click();
+});
+
+
+    // ===== Tabs droite
+    const tabChat=document.getElementById('tabChat'), tabDepots=document.getElementById('tabDepots');
+    const paneChat=document.getElementById('paneChat'), paneDepots=document.getElementById('paneDepots');
+    function setTab(which){
+      [tabChat,tabDepots].forEach(t=>t.classList.remove('active'));
+      [paneChat,paneDepots].forEach(p=>p.style.display='none');
+      if(which==='chat'){ tabChat.classList.add('active'); paneChat.style.display='flex'; }
+      if(which==='depots'){ tabDepots.classList.add('active'); paneDepots.style.display='block'; }
+    }
+    tabChat.onclick=()=>setTab('chat');
+    tabDepots.onclick=()=>setTab('depots');
+
+    // ===== Boot
+    async function buildAndRender(){ await buildTree(); }
+    buildAndRender();
+  </script>
+</body>
+</html>

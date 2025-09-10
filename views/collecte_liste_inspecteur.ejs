@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Toutes les collectes</title>
+<style>
+  label{margin-right:6px}
+  table{width:100%;border-collapse:collapse}
+  th,td{border:1px solid #ccc;padding:6px}
+  th{background:#eee}
+  .btn-link{display:inline-block;padding:4px 8px;border:1px solid #334155;border-radius:6px;text-decoration:none;color:#334155;font-size:12px}
+  .btn-link:hover{background:#f3f4f6}
+  form{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
+  select,input[type=number]{padding:4px 6px}
+</style>
+</head>
+<body>
+<h2>Collectes – Inspection</h2>
+
+<form method="get">
+  <label>Cycle
+    <select name="cycle">
+      <option value=""></option>
+      <option value="premier" <%= (q && q.cycle==='premier') ? 'selected' : '' %> >premier</option>
+      <option value="second"  <%= (q && q.cycle==='second')  ? 'selected' : '' %> >second</option>
+    </select>
+  </label>
+
+  <label>Spécialité
+    <select name="specialite">
+      <option value=""></option>
+      <option <%= (q && q.specialite==='DECO') ? 'selected' : '' %> >DECO</option>
+      <option <%= (q && q.specialite==='AF1')  ? 'selected' : '' %> >AF1</option>
+      <option <%= (q && q.specialite==='AF2')  ? 'selected' : '' %> >AF2</option>
+      <option <%= (q && q.specialite==='AF3')  ? 'selected' : '' %> >AF3</option>
+    </select>
+  </label>
+
+  <label>Évaluation
+    <input name="evaluation" type="number" min="1" max="6" style="width:70px"
+           value="<%= (q && typeof q.evaluation!=='undefined') ? q.evaluation : '' %>">
+  </label>
+
+  <button>Filtrer</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Établissement</th>
+      <th>Animateur</th>
+      <th>Cycle</th>
+      <th>Spécialité</th>
+      <th>Éval.</th>
+      <th>Classes</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  <% rows.forEach(r=>{ %>
+    <tr>
+      <td><%= new Date(r.dateDepot).toLocaleString() %></td>
+      <td><%= r.etablissement %></td>
+      <td><%= r.animateur %></td>
+      <td><%= r.cycle %></td>
+      <td><%= r.specialite %></td>
+      <td><%= r.evaluation %></td>
+      <td><%= r.classes?.length||0 %></td>
+      <td>
+        <a class="btn-link" href="/collecte/inspecteur/depots/<%= r._id %>">Voir détail</a>
+      </td>
+    </tr>
+  <% }) %>
+  </tbody>
+</table>
+</body>
+</html>
+
+
+

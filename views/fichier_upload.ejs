@@ -1,0 +1,24 @@
+<!DOCTYPE html><html lang="fr"><head>
+<meta charset="UTF-8"><title>Envoyer un fichier</title>
+</head><body>
+<h2>Envoyer un document – <%= user.etab %></h2>
+<form action="/fichiers/upload" method="post" enctype="multipart/form-data">
+  <p>
+    <label>Catégorie
+      <select name="categorie">
+        <option>Emploi du temps</option><option>Fichier enseignants</option>
+        <option>Suivi pédagogique</option><option>Programme</option><option>Autre</option>
+      </select>
+    </label>
+  </p>
+  <p><label>Spécialité
+    <select name="specialite"><option></option><option>DECO</option><option>AF1</option><option>AF2</option><option>AF3</option></select>
+  </label></p>
+  <p><label>Évaluation (1-6) <input type="number" name="evaluation" min="1" max="6"></label></p>
+  <p><label>Description <input type="text" name="description" style="width:350px"></label></p>
+  <p><input type="file" name="fichier" required></p>
+  <button>Envoyer</button>
+</form>
+<p><a href="/fichiers">Retour à la liste</a></p>
+</body></html>
+

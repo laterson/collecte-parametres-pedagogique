@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Connexion</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f7;margin:0}
+    .wrap{max-width:420px;margin:60px auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px}
+    h1{margin:0 0 10px}
+    label{display:block;margin:10px 0 0}
+    input,select{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;margin-top:6px}
+    .btn{width:100%;margin-top:14px;padding:10px 12px;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:8px;cursor:pointer}
+    .err{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:8px;margin-bottom:10px}
+    .tabs{display:flex;gap:8px;margin-bottom:10px}
+    .tab{flex:1;text-align:center;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;text-decoration:none;color:#111}
+    .tab.active{background:#111;color:#fff;border-color:#111}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Connexion</h1>
+
+  <div class="tabs">
+    <a class="tab <%= (role==='admin')?'active':'' %>" href="/login?role=admin">Administrateur</a>
+    <a class="tab <%= (role==='insp')?'active':'' %>"  href="/login?role=insp">Inspecteur</a>
+    <a class="tab <%= (role==='anim')?'active':'' %>"  href="/login?role=anim">Animateur</a>
+  </div>
+
+  <% if (error) { %><div class="err"><%= error %></div><% } %>
+
+  <form method="post" action="/auth/login" autocomplete="on">
+    <input type="hidden" name="role" value="<%= role || 'anim' %>">
+    <label>Email
+      <input name="email" type="email" required autofocus>
+    </label>
+    <label>Mot de passe
+      <input name="password" type="password" required>
+    </label>
+    <button class="btn">Se connecter</button>
+  </form>
+</div>
+</body>
+</html>
+
+  
+    
