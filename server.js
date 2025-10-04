@@ -1271,32 +1271,31 @@ app.post('/api/purge', async (req, res) => {
 
 
 
-  /* ===== Socket.IO (chat) ===== */
-  const { Server } = require('socket.io');
-  const io = new Server(server, { cors:{ origin:true, credentials:true } });
-  app.set('io', io);
-  io.use((socket,next)=> sessionMiddleware(socket.request, {}, next));
-  require('./server/sockets/chat')(io);
+ // ---- Route reset du chat (optionnelle si store SQLite dispo)
+let chatStore = null;
+try {
+  chatStore = require('./db/chat'); // présent seulement si better-sqlite3 est compilé
+} catch (e) {
+  console.warn('Chat reset disabled (no SQLite store):', e.message);
+}
 
- // 🔽 place ce bloc APRÈS app.set('io', io) et require('./server/sockets/chat')(io)
+if (chatStore) {
+  app.delete('/api/chat/reset', requireAuth, requireRole('insp'), async (req, res) => {
+    try {
+      const inspection = String(req.query.inspection || req.user?.inspection || '')
+        .trim().toLowerCase();
+      if (!inspection) return res.status(400).json({ ok:false, error:'inspection required' });
 
-const chatStore = require('./db/chat'); // ou utilise attachChat.purge
+      const room = `insp:${inspection}`;
+      chatStore.clearRoom(room);                // purge côté store (SQLite)
+      req.app.get('io')?.to(room).emit('chat:history', []); // vide chez les clients
+      res.json({ ok:true });
+    } catch (e) {
+      res.status(500).json({ ok:false, error: String(e.message || e) });
+    }
+  });
+}
 
-app.delete('/api/chat/reset', requireAuth, requireRole('insp'), async (req, res) => {
-  try {
-    const inspection = String(req.query.inspection || req.user?.inspection || '').trim().toLowerCase();
-    if (!inspection) return res.status(400).json({ ok:false, error:'inspection required' });
-
-    const room = `insp:${inspection}`;
-    chatStore.clearRoom(room);            // ✅ on efface la room dans SQLite
-
-    const io = req.app.get('io');
-    io.to(room).emit('chat:history', []); // vide chez les clients
-    res.json({ ok:true });
-  } catch (e) {
-    res.status(500).json({ ok:false, error: String(e.message || e) });
-  }
-});
 
 
 
