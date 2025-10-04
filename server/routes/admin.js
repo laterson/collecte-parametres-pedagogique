@@ -2,6 +2,16 @@
 const express = require('express');
 const bcrypt  = require('bcrypt');
 const User    = require('../../models/User');
+const fs        = require('fs');
+const path      = require('path');
+
+const Collecte  = require('../../models/Collecte');
+const Settings  = require('../../models/Settings');
+const Baseline  = require('../../models/Baseline');
+const Teacher   = require('../../models/Teacher');
+const Message   = require('../../models/Message');      // si présent
+const SchoolCard= require('../../models/SchoolCard');   // si présent
+
 
 const router = express.Router();
 
@@ -25,6 +35,71 @@ router.use(ensureAdmin);
    GET /admin/users?inspection=&departement=&q=
    - recherche sur nom/email/etablissement/departement (insensible à la casse)
 */
+// supprime un fichier d'uploads si le chemin est référencé
+async function safeRmUpload(relPath){
+  try{
+    if(!relPath) return;
+    const root = path.join(process.cwd(), 'uploads');
+    const rel  = String(relPath).replace(/^\/+/, '');
+    const abs  = path.resolve(root, rel);
+    if (!abs.startsWith(root)) return;   // sécurité
+    await fs.promises.rm(abs, { force:true });
+  }catch(_){}
+}
+
+// récupère tous les chemins de fichiers stockés dans une collecte
+function extractFilesFromCollecte(doc){
+  const out = [];
+  const all = []
+    .concat(doc?.pieces   || [])
+    .concat(doc?.fichiers || [])
+    .concat(doc?.uploads  || [])
+    .filter(Boolean);
+  for (const f of all){
+    if (typeof f === 'string') out.push(f);
+    else if (f && typeof f === 'object') out.push(f.path || f.url || '');
+  }
+  return out.filter(Boolean);
+}
+
+// purge complète d'un établissement pour une inspection donnée
+async function purgeEstablishment({ inspection, etablissement }){
+  const insp = String(inspection||'').toLowerCase();
+  const etab = String(etablissement||'').trim();
+
+  // collectes pour lister les fichiers
+  const collectes = await Collecte.find({ inspection: insp, etablissement: etab })
+    .select('pieces fichiers uploads')
+    .lean();
+  const files = collectes.flatMap(extractFilesFromCollecte);
+
+  // suppressions en base
+  const r = {};
+  r.settings   = await Settings.deleteMany({ inspection: insp, etablissement: etab });
+  r.collectes  = await Collecte.deleteMany({ inspection: insp, etablissement: etab });
+  r.baselines  = await Baseline.deleteMany({ etablissement: etab });
+  r.teachers   = await Teacher.deleteMany({ inspection: insp, etablissement: etab });
+  try { r.schoolCard = await SchoolCard.deleteMany({ etablissement: etab }); } catch(_) {}
+  try { r.messages   = await Message.deleteMany({ $or:[
+    { etablissement: etab }, { fromEtab: etab }, { toEtab: etab } ]}); } catch(_){}
+
+  // fichiers (hors transaction)
+  await Promise.all(files.map(safeRmUpload));
+
+  return {
+    deleted: {
+      settings   : r.settings?.deletedCount   || 0,
+      collectes  : r.collectes?.deletedCount  || 0,
+      baselines  : r.baselines?.deletedCount  || 0,
+      teachers   : r.teachers?.deletedCount   || 0,
+      schoolCard : r.schoolCard?.deletedCount || 0,
+      messages   : r.messages?.deletedCount   || 0,
+      files      : files.length
+    }
+  };
+}
+
+
 router.get('/users', async (req, res, next) => {
   try {
     const { inspection, departement, q } = req.query || {};
@@ -58,12 +133,69 @@ router.delete('/users/:id', async (req, res, next) => {
     if (String(id) === String(req.user.id)) {
       return res.status(400).json({ error: 'Impossible de supprimer votre propre compte.' });
     }
-    const doc = await User.findById(id);
-    if (!doc) return res.status(404).json({ error: 'not found' });
-    await User.deleteOne({ _id: id });
-    res.json({ ok: true });
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'not found' });
+
+    const purgeAll = String(req.query.purge || '0') === '1';
+    const force    = String(req.query.force || '0') === '1';
+
+    let report = { userDeleted:false, purge:null };
+
+    if (purgeAll && !force) {
+      const others = await User.countDocuments({
+        _id:{ $ne: user._id },
+        inspection: (user.inspection||'').toLowerCase(),
+        etablissement: user.etablissement
+      });
+      if (others > 0) {
+        return res.status(409).json({
+          error: `Il reste ${others} autre(s) utilisateur(s) sur l'établissement « ${user.etablissement} ». Ajoute &force=1 pour purger quand même.`
+        });
+      }
+    }
+
+    if (purgeAll) {
+      report.purge = await purgeEstablishment({
+        inspection: user.inspection,
+        etablissement: user.etablissement
+      });
+    }
+
+    await User.deleteOne({ _id: user._id });
+    report.userDeleted = true;
+
+    res.json({
+      message: 'Utilisateur supprimé' + (purgeAll ? ' et établissement purgé' : ''),
+      inspection: user.inspection,
+      etablissement: user.etablissement,
+      ...report
+    });
   } catch (e) { next(e); }
 });
+
+
+// DELETE /admin/establishments?inspection=artsplastiques&etablissement=LTB%20NSAM&force=1
+router.delete('/establishments', async (req, res, next) => {
+  try {
+    const inspection    = String(req.query.inspection||'').toLowerCase();
+    const etablissement = String(req.query.etablissement||'').trim();
+    const force         = String(req.query.force||'0') === '1';
+    if (!inspection || !etablissement)
+      return res.status(400).json({ error:'inspection et etablissement requis' });
+
+    if (!force) {
+      const users = await User.countDocuments({ inspection, etablissement });
+      if (users > 0) {
+        return res.status(409).json({ error:`${users} utilisateur(s) existent encore pour cet établissement. Ajoute &force=1 pour purger quand même.` });
+      }
+    }
+
+    const report = await purgeEstablishment({ inspection, etablissement });
+    res.json({ message:'Établissement purgé', inspection, etablissement, ...report });
+  } catch (e) { next(e); }
+});
+
 
 /* ===== MISE À JOUR UTILISATEUR =====
    - champs éditables: nomComplet, email, etablissement, departement(+code), role, inspection, password

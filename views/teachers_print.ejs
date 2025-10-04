@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Impression — Fichier des enseignants <%= (filters.annee||'') %></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --ink:#111827; --muted:#555; --line:#d8dde3;
+      --thead:#9aa3ad; --thead-ink:#ffffff;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    h1{margin:0 0 4px 0;font-size:22px}
+    .hint{color:var(--muted);font-size:12px;margin-bottom:8px}
+
+    /* === Une “sheet” par établissement === */
+    .sheet{
+      page-break-after:always;
+      padding:10mm 12mm;
+      break-inside: avoid-page;
+    }
+    .sheet:last-child{page-break-after:auto}
+
+    .meta{display:grid;grid-template-columns:160px 1fr;gap:6px 12px;margin:10px 0 8px}
+    .meta label{color:var(--muted)}
+
+    /* ===== Tableau imprimable, stable ===== */
+    table{width:100%;border-collapse:collapse;table-layout:fixed;border-spacing:0}
+    th,td{
+      border:1px solid var(--line);
+      padding:6px 8px;
+      font-size:11px;
+      vertical-align:middle;
+      text-align:center;
+      white-space:normal;
+      overflow-wrap:anywhere;
+      word-break:break-word;
+    }
+    thead th{
+      background:var(--thead);
+      color:var(--thead-ink);
+      -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    }
+    td.name{ text-align:left; }
+
+    /* === Largeurs équilibrées (somme ≈ 100%) ===
+       1:No 3 | 2:Nom 17 | 3:Mat 7 | 4:Grade 6 | 5:Cat 5 | 6:DN 7 | 7:Sexe 4
+       8:Rég 6.5 | 9:Dept 6.5 | 10:Arr 6.5 | 11:Entrée FP 7 | 12:Poste 6 | 13:Affect 7 | 14:Rang 6.5 | 15:Contact 9.5 */
+    col.no      { width: 3% }
+    col.nom     { width:17% }
+    col.matric  { width: 7% }
+    col.grade   { width: 6% }
+    col.categ   { width: 5% }
+    col.dn      { width: 7% }
+    col.sexe    { width: 4% }
+    col.reg     { width: 6.5% }
+    col.dep     { width: 6.5% }
+    col.arr     { width: 6.5% }
+    col.entfp   { width: 7% }
+    col.poste   { width: 6% }
+    col.affect  { width: 7% }
+    col.rang    { width: 6.5% }
+    col.tel     { width: 9.5% }
+
+    /* Quelques min-width utiles si le driver ignore colgroup */
+    th:nth-child(2), td:nth-child(2){min-width:140px} /* Noms et prénoms */
+    th:nth-child(3), td:nth-child(3){min-width:95px}  /* Matricule */
+    th:nth-child(6), td:nth-child(6){min-width:95px}  /* Date naissance */
+    th:nth-child(11),td:nth-child(11){min-width:110px}/* Date entrée FP */
+    th:nth-child(13),td:nth-child(13){min-width:125px}/* Date affectation */
+
+    /* Téléphone bien lisible (une seule ligne) */
+    td.tel{
+      white-space:nowrap;
+      font-size:10.5px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing:.2px;
+      text-align:left;
+    }
+    /* Rang du poste : peut prendre deux lignes compactes */
+    td.rang{
+      white-space:normal;
+      text-align:center;
+      line-height:1.1;
+      padding:4px 6px;
+    }
+    /* Séparation visuelle avant la dernière colonne */
+    tbody td:nth-child(15),
+    thead th:nth-child(15){
+      border-left-width: 1.5px;
+    }
+
+    /* ===== Impression solide ===== */
+    @page{ size:A4 landscape; margin:8mm }
+    @media print{
+      .toolbar{display:none!important}
+      thead{display:table-header-group}
+      tfoot{display:table-footer-group}
+      tr{break-inside:avoid; page-break-inside:avoid}
+      h1{font-size:18px}
+    }
+
+    /* Bandeau util (invisible à l’impression) */
+    .toolbar{
+      position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;
+      padding:8px 12px;display:flex;gap:8px
+    }
+    .btn{border:1px solid #cfd4da;background:#fff;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <button class="btn" onclick="window.print()">Imprimer</button>
+    <a class="btn" href="/inspecteur/enseignants?<%= new URLSearchParams(filters).toString() %>">Retour</a>
+  </div>
+
+  <div id="root"></div>
+
+  <script>
+  (function(){
+    const ROOT = document.getElementById('root');
+
+    // ===== Filtres init depuis la route
+    const FILTERS = <%- JSON.stringify(filters||{}) %>;
+
+    // ===== Spécialité (inspection) + “beautifier” (ex: ARTS PLASTIQUES)
+    const RAW_SPEC = <%- JSON.stringify((inspSpec||'').toString()) %>;
+    function prettySpec(s){
+      if(!s) return '';
+      let t = String(s).replace(/[_\-]+/g,' ').trim();
+      if(/\s/.test(t)) return t.toUpperCase();
+      const lower = t.toLowerCase();
+      const suffixes = ['plastiques','artistiques','industrielles','mecaniques','mécaniques','civil','civile','hotellerie','hôtellerie','restauration','decoration','coiffure','esthetique','informatique','agriculture','elevage','commerce','gestion','menuiserie','metallurgie','froid','climatisation','electricite','electronique'];
+      for(const suf of suffixes){
+        if(lower.endsWith(suf) && lower.length > suf.length+1){
+          const head = lower.slice(0, lower.length-suf.length);
+          return (head+' '+suf).toUpperCase();
+        }
+      }
+      if(lower.length>=8){ const mid=Math.floor(lower.length/2); return (lower.slice(0,mid)+' '+lower.slice(mid)).toUpperCase(); }
+      return t.toUpperCase();
+    }
+    const SPEC = prettySpec(RAW_SPEC);
+
+    const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    // Dates -> jj/mm/aaaa
+    const fmtDate = v => {
+      if(!v) return '';
+      const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(m) return `${m[3]}/${m[2]}/${m[1]}`;
+      const d = new Date(v); if(isNaN(d)) return esc(v);
+      const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`;
+    };
+    // Téléphone : groupe chiffres (3-2-2-2 ou 3-3-3 selon longueur) et enlève espaces parasites
+    function fmtTel(v){
+      if(!v) return '';
+      const digits = String(v).replace(/[^\d]/g,'');
+      if(digits.length<=3) return digits;
+      if(digits.length===8)  return digits.replace(/(\d{2})(?=\d)/g,'$1 ').trim();
+      if(digits.length===9)  return digits.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/,'$1 $2 $3 $4');
+      if(digits.length===10) return digits.replace(/(\d{3})(\d{3})(\d{4})/,'$1 $2 $3');
+      return digits.replace(/(\d{3})(?=\d)/g,'$1 ').trim();
+    }
+
+    function groupBy(xs, key){ const m=new Map(); xs.forEach(x=>{const k=x[key]||'—'; if(!m.has(k)) m.set(k,[]); m.get(k).push(x);}); return m; }
+
+    async function loadData(){
+      const qp = new URLSearchParams(FILTERS);
+      const r = await fetch('/api/inspecteur/carte/region-staff?'+qp.toString(), {credentials:'same-origin'});
+      const j = await r.json(); return Array.isArray(j.rows)? j.rows : [];
+    }
+
+    function sheet(etab, dept, rows){
+      return `
+        <section class="sheet" aria-label="${esc(etab)}">
+          <h1>Fichier complet des enseignants — <%= (filters.annee||'') %></h1>
+          <div class="hint">Un tableau par établissement (version imprimable, en-têtes répétés).</div>
+
+          <div class="meta">
+            <label>Département :</label><div>${esc(dept||'—')}</div>
+            <label>Établissement :</label><div>${esc(etab||'—')}</div>
+            <label>Spécialité / Série :</label><div>${esc(SPEC)}</div>
+          </div>
+
+          <table role="table" aria-label="Fichier du personnel enseignant">
+            <colgroup>
+              <col class="no"><col class="nom"><col class="matric"><col class="grade"><col class="categ">
+              <col class="dn"><col class="sexe"><col class="reg"><col class="dep"><col class="arr">
+              <col class="entfp"><col class="poste"><col class="affect"><col class="rang"><col class="tel">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Noms et prénoms</th>
+                <th>Matricule</th>
+                <th>Grade</th>
+                <th>Catégorie</th>
+                <th>Date de naissance</th>
+                <th>Sexe</th>
+                <th>Région d'origine</th>
+                <th>Département d'origine</th>
+                <th>Arrondissement d'origine</th>
+                <th>Date d'entrée à la fonction publique</th>
+                <th>Poste occupé</th>
+                <th>Date d’affectation ou de nomination</th>
+                <th>Rang du poste</th>
+                <th>Contact téléphonique</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r,i)=>`
+                <tr>
+                  <td>${i+1}</td>
+                  <td class="name">${esc(r.nom||'')}</td>
+                  <td>${esc(r.matricule||'')}</td>
+                  <td>${esc(r.grade||'')}</td>
+                  <td>${esc(r.categorie||'')}</td>
+                  <td>${fmtDate(r.dateNaissance)}</td>
+                  <td>${esc(r.sexe||'')}</td>
+                  <td>${esc(r.regionOrigine||'')}</td>
+                  <td>${esc(r.departementOrigine||'')}</td>
+                  <td>${esc(r.arrondissementOrigine||'')}</td>
+                  <td>${fmtDate(r.dateEntreeFP)}</td>
+                  <td>${esc(r.posteOccupe||'')}</td>
+                  <td>${fmtDate(r.dateAffectation)}</td>
+                  <td class="rang">${esc(r.rangPoste||'')}</td>
+                  <td class="tel">${esc(fmtTel(r.telephone)||'')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </section>`;
+    }
+
+    async function render(){
+      const rows = await loadData();
+      rows.sort((a,b)=> String(a.etablissement||'').localeCompare(String(b.etablissement||''), 'fr'));
+      const byEtab = groupBy(rows, 'etablissement');
+
+      const out = [];
+      for(const [etab, list] of byEtab.entries()){
+        const dept = list[0]?.departement || '—';
+        out.push(sheet(etab, dept, list));
+      }
+      ROOT.innerHTML = out.join('') || '<div style="padding:20px;color:#666">Aucune donnée à imprimer.</div>';
+
+      // Lancer l’impression quand le DOM est prêt
+      setTimeout(()=> window.print(), 120);
+    }
+
+    render();
+  })();
+  </script>
+</body>
+</html>

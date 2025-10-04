@@ -33,6 +33,9 @@ const { attachUser, requireAuth, requireRole, regenerateSession } = require('./s
 const fichiersRouter = require('./server/routes/fichiers');
 const adminRouter    = require('./server/routes/admin');
 const inspecteurApiRouter = require('./server/routes/inspecteur');
+const inspecteurTeachers = require('./routes/inspecteur_teachers');
+const inspTeach = require('./routes/inspecteur_teachers');
+const app = express();
 
 /* ===== Seed admin (1er démarrage) ===== */
 async function seedAdmin(){
@@ -69,6 +72,19 @@ const TRI  = { T1:[1,2], T2:[3,4], T3:[5,6] };
 const pct  = (den,num)=> den ? Number(((num/den)*100).toFixed(2)) : 0;
 const norm = s => String(s ?? '').trim();
 const normStrict = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,'').trim();
+
+
+// 👇 AJOUTER ICI (global, une seule fois)
+function splitClassLabel(label){
+  const raw0 = String(label || '')
+    .replace(/\u00A0/g, ' ')      // remplace les espaces insécables
+    .replace(/\s+/g, ' ')         // normalise les espaces multiples
+    .trim();
+  // repère "(2)", "#2", "/2", "-2", "div 2", "division 2", "section 2", ou suffixes G/S + chiffre
+  const m = raw0.match(/\s*(?:\(|#|\/|-|\bdiv(?:ision)?\b|\bsection\b|[GgSs])\s*(\d+)\s*\)?\s*$/u);
+  if (!m) return { base: raw0, division: 1 };
+  return { base: raw0.slice(0, m.index).trim(), division: Number(m[1] || '1') || 1 };
+}
 
 function emptyTotals(){
   return { Hd:0,Hf:0, Lp:0,Lf:0, Ldp:0,Ldf:0, Tp:0,Tf:0, Tdp:0,Tdf:0, Comp:0,M10:0, EffT:0,EffP:0 };
@@ -125,54 +141,186 @@ function addGenderFromDisc(T, d){
   T.garcons = (T.garcons || 0) + pick(d, 'garcons','Garcons','G','g');
 }
 
-/* ===== Vue formulaire agrégée ===== */
-function buildFormViewForClass(fiches, expectedList, classeName){
-  const expected      = Array.isArray(expectedList) ? expectedList : [];
-  const expectedOrder = new Map(expected.map((n,i)=>[n,i]));
-  const perDisc = {};
-  const etabsInClass = new Set();
-  const countByDisc  = {};
-
-  const wanted = normStrict(classeName);
-
-  for (const F of fiches){
-    const cl = (F.classes||[]).find(c => normStrict(c.nom)===wanted);
-    if(!cl) continue;
-    etabsInClass.add(F.etablissement||'—');
-    getDiscs(cl).forEach(d=>{
-      const key = norm(d.discipline ?? d.nom ?? d.name);
-      const T = (perDisc[key] ||= emptyTotals());
-      addTotals(T, d);
-      countByDisc[key] = (countByDisc[key]||0) + 1;
-    });
-  }
-
-  const present  = Object.keys(perDisc);
-  const allNames = new Set([...expected, ...present]);
-  const rows = [];
-  const totalClass = emptyTotals();
-
-  for (const name of allNames){
-    const isExpected = expected.includes(name);
-    const T = perDisc[name] || emptyTotals();
-    const packed = packTotals(T);
-    rows.push({
-      nom:name, occurrences: countByDisc[name]||0,
-      expected:isExpected, foreign: !isExpected && (countByDisc[name]||0)>0, missing: isExpected && !(countByDisc[name]||0),
-      ...packed
-    });
-    addTotals(totalClass, T);
-  }
-
-  rows.sort((a,b)=>{
-    const aIdx = expectedOrder.has(a.nom) ? expectedOrder.get(a.nom) : 1e9;
-    const bIdx = expectedOrder.has(b.nom) ? expectedOrder.get(b.nom) : 1e9;
-    if (aIdx!==bIdx) return aIdx-bIdx;
-    return a.nom.localeCompare(b.nom);
-  });
-
-  return { classe: classeName, etablissements: etabsInClass.size, disciplines: rows, total: packTotals(totalClass), expected };
+// Dernier timestamp d'un document Collecte
+function bestTs(doc){
+  const ca = doc?.createdAt ? new Date(doc.createdAt).getTime() : 0;
+  const dd = doc?.dateDepot ? new Date(doc.dateDepot).getTime() : 0;
+  let oidTs = 0;
+  try { oidTs = doc?._id?.getTimestamp?.().getTime?.() || 0; } catch(_) {}
+  return Math.max(ca, dd, oidTs);
 }
+
+function keyOf(label){
+  return String(label || '')
+    .replace(/\u00A0/g,' ')                // supprime espaces insécables
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // enlève les accents
+    .replace(/\s+/g,' ')                   // espaces multiples → un
+    .trim()
+    .toUpperCase();
+}
+
+
+
+function buildFormViewForClass(fiches, expectedList, classeName, expectedEvalCount = 6) {
+  const expected = Array.isArray(expectedList) ? expectedList : [];
+  const expectedOrder = new Map(expected.map((n, i) => [n, i]));
+  const wantedBase = normStrict(splitClassLabel(classeName).base);
+  const isFirstYearClass = /^(?:1|1ere|1re|premiere)\b/.test(wantedBase);
+
+  // ---- 1) ne garder que le DERNIER dépôt par (etab|anim)
+  const latest = new Map();
+  for (const d of (fiches || [])) {
+    const k = `${d.etablissement || '—'}|${d.animateur || '—'}`;
+    const cur = latest.get(k);
+    if (!cur || bestTs(d) > bestTs(cur)) latest.set(k, d);
+  }
+  const docs = [...latest.values()];
+
+  // ---- 2) agrégat strict pour la CLASSE demandée (fusion divisions)
+  const perDisc = {};                 // KEY -> { label, totals }
+  const presentByDepot = new Map();   // depKey -> Set(KEY)
+  const etabsInClass = new Set();
+
+  for (const F of docs) {
+    const matches = (F.classes || []).filter(c => {
+      const base = normStrict(splitClassLabel(c?.nom || '').base);
+      return base === wantedBase;
+    });
+    if (!matches.length) continue;
+    etabsInClass.add(F.etablissement || '—');
+    const depKey = `${F.etablissement || '—'}|${F.animateur || '—'}`;
+    const have = presentByDepot.get(depKey) || new Set();
+
+    for (const cl of matches) {
+      getDiscs(cl).forEach(d => {
+        const label = String(d.discipline ?? d.nom ?? d.name ?? '').replace(/\u00A0/g, ' ').trim();
+        if (!label) return;
+        const KEY = label.toUpperCase();
+
+        if (!perDisc[KEY]) perDisc[KEY] = { label, totals: emptyTotals() };
+        addTotals(perDisc[KEY].totals, d);
+        have.add(KEY);
+      });
+    }
+    presentByDepot.set(depKey, have);
+  }
+
+  // ---- 3) INTERSECTION stricte: seulement les KEY présentes dans TOUS les dépôts
+  const sets = [...presentByDepot.values()];
+  const totalDepots = sets.length;
+  const common = (() => {
+    if (!sets.length) return new Set();
+    const out = new Set(sets[0]);
+    for (const s of sets.slice(1))
+      for (const v of Array.from(out))
+        if (!s.has(v)) out.delete(v);
+    return out;
+  })();
+
+ // ---- 3bis) INCOHÉRENCES (TOUS les dépôts), + dénominateur théorique AP×évals attendues
+  const presentByAllDeposits = new Map(); // depId -> { have:Set(KEY), etab, ap }
+  const activeDepKeys = new Set();        // depKey = etab|ap : AP "actifs" sur cette classe
+for (const F of (fiches || [])) {
+  const depId = String(F._id || Math.random());
+  const have  = new Set();
+  const matches = (F.classes || []).filter(c => {
+    const base = normStrict(splitClassLabel(c?.nom || '').base);
+    return base === wantedBase;
+  });
+  if (matches.length) {
+      activeDepKeys.add(`${F.etablissement || '—'}|${F.animateur || '—'}`);
+    }
+  for (const cl of matches) {
+    getDiscs(cl).forEach(d => {
+      const label = String(d.discipline ?? d.nom ?? d.name ?? '')
+        .replace(/\u00A0/g, ' ')
+        .trim();
+      if (label) have.add(label.toUpperCase());
+    });
+  }
+  presentByAllDeposits.set(depId, { have, etab: (F.etablissement||''), ap:(F.animateur||'') });
+}
+
+// Comptes globaux
+const allEntries = [...presentByAllDeposits.entries()]; // [depId, {have,etab,ap}]
+const totalAll = allEntries.length;
+const unionAll = new Set();
+for (const [,info] of allEntries) for (const k of info.have) unionAll.add(k);
+
+const countAll = new Map();
+for (const KEY of unionAll) countAll.set(KEY, 0);
+for (const [,info] of allEntries) {
+  for (const KEY of unionAll) {
+    if (info.have.has(KEY)) countAll.set(KEY, (countAll.get(KEY)||0) + 1);
+  }
+}
+
+// Incohérences + détails (où ça manque)
+const incoherences = [...unionAll]
+  .filter(KEY => {
+    if (isFirstYearClass && KEY === 'TECHNOLOGIE') {
+      // Spécifique 1ère année DECO : doit être partout
+      return countAll.get(KEY) < totalAll;
+    } else {
+      // règle générale : présente quelque part mais pas partout
+      return totalAll > 0 && countAll.get(KEY) > 0 && countAll.get(KEY) < totalAll;
+    }
+  })
+  .map(KEY => {
+    const detailsMissing = allEntries
+      .filter(([,info]) => !info.have.has(KEY))
+      .map(([depId, info]) => ({ depId, etab: info.etab, ap: info.ap }));
+    const cov = Number(((countAll.get(KEY) / totalAll) * 100).toFixed(2));
+    return {
+      nom: (perDisc[KEY]?.label) || KEY,
+      presentIn: countAll.get(KEY),
+      missingIn: totalAll - countAll.get(KEY),
+      coverage: cov,
+      details: detailsMissing  // 👈 nouveau : liste des dépôts défaillants
+    };
+  })
+  .sort((a, b) => (a.coverage - b.coverage) || a.nom.localeCompare(b.nom, 'fr'));
+
+
+  // ---- 4) Construction des lignes affichées: uniquement les disciplines communes
+  const rows = Object.entries(perDisc)
+    .filter(([KEY]) => {
+      if (KEY === 'TECHNOLOGIE' && !isFirstYearClass) {
+        return false;
+      }
+      return common.has(KEY);
+    })
+    .map(([_, obj]) => {
+      const P = packTotals(obj.totals);
+      return { nom: obj.label, ...P };
+    })
+    .sort((a, b) => {
+      const ai = expectedOrder.has(a.nom) ? expectedOrder.get(a.nom) : 1e9;
+      const bi = expectedOrder.has(b.nom) ? expectedOrder.get(b.nom) : 1e9;
+      if (ai !== bi) return ai - bi;
+      return a.nom.localeCompare(b.nom, 'fr');
+    });
+
+  // total = somme des lignes retenues
+  const totalT = rows.reduce((T, r) => {
+    const back = {
+      Hd: r.Hd, Hf: r.Hf, Lp: r.Lp, Lf: r.Lf, Ldp: r.Ldp, Ldf: r.Ldf,
+      Tp: r.Tp, Tf: r.Tf, Tdp: r.Tdp, Tdf: r.Tdf, Comp: r.Comp, M10: r.M10, EffT: r.EffT, EffP: r.EffP
+    };
+    addTotals(T, back);
+    return T;
+  }, emptyTotals());
+
+  return {
+    classe: splitClassLabel(classeName).base,
+    etablissements: etabsInClass.size,
+    disciplines: rows,
+    incoherences,
+    total: packTotals(totalT),
+    expected
+  };
+}
+
 
 /* ===== Vue AP (baselines) ===== */
 async function buildAPForm({ inspection, etablissement, annee, cycle, specialite }) {
@@ -357,8 +505,10 @@ const sessionMiddleware = session({
   app.use('/admin', requireAuth, isAdmin, adminRouter);
   app.use('/api/inspecteur', requireAuth, limitToInspection(), inspecteurApiRouter);
   
+app.use('/api/teachers', require('./routes/teachers'));
+app.use('/inspecteur/enseignants', inspTeach);
 
-
+app.use('/', inspecteurTeachers);
   /* ===== APIs de synthèse ===== */
   app.get('/api/summary/list', isAuth, isInsp, withInsp, async (req,res)=>{
   const { cycle, specialite, evaluation, trimestre, etablissement, departement } = req.query;
@@ -383,9 +533,69 @@ const sessionMiddleware = session({
   res.json(out);
 });
 
+// === Progression dépôts par établissement (bas: attendu vs reçus) ===
+app.get('/api/summary/progress', isAuth, isInsp, withInsp, async (req,res)=>{
+  const { cycle, specialite, evaluation, trimestre, classe, etablissement, departement } = req.query;
+
+  const f = { inspection:req.insp };
+  if (cycle)      f.cycle = String(cycle);
+  if (specialite) f.specialite = String(specialite).toUpperCase();
+  if (evaluation) f.evaluation = Number(evaluation);
+  else if (trimestre) f.evaluation = { $in: TRI[trimestre]||[] };
+  if (etablissement) f.etablissement = etablissement;
+  if (departement)   f.departement   = departement;
+
+  // nb d’évals attendues dans la période
+  const expectedEvalCount =
+    evaluation ? 1 :
+    (trimestre ? (TRI[trimestre]?.length || 0) : 6);
+
+  // Filtre classe (fusion divisions)
+  const needClass = Boolean(classe);
+  const wantedBase = needClass
+    ? normStrict(splitClassLabel(classe).base)
+    : null;
+
+  // On compte par établissement :
+  // - apSet : AP “actifs” (qui ont déposé sur cette classe/sélection)
+  // - pairs : couples uniques (animateur|evaluation) reçus
+  const byEtab = new Map();
+  const docs = await Collecte.find(f).lean();
+
+  for (const F of docs){
+    // si on filtre une classe précise, on ne retient que les dépôts qui la contiennent (divisions fusionnées)
+    if (needClass) {
+      const matches = (F.classes||[]).some(c => {
+        const base = normStrict(splitClassLabel(c?.nom || '').base);
+        return base === wantedBase;
+      });
+      if (!matches) continue;
+    }
+
+    const E = F.etablissement || '—';
+    if (!byEtab.has(E)) byEtab.set(E, { apSet:new Set(), pairs:new Set() });
+
+    const r = byEtab.get(E);
+    const ap = (F.animateur || '—').trim();
+    const ev = Number(F.evaluation)||0;
+
+    if (ap) r.apSet.add(ap);
+    if (ap && ev) r.pairs.add(`${ap}|${ev}`);
+  }
+
+  const rows = Array.from(byEtab.entries()).map(([etablissement, r])=>{
+    const apCount   = r.apSet.size;
+    const expected  = apCount * (expectedEvalCount || 0);
+    const received  = r.pairs.size;
+    const rate      = expected ? Number(((received/expected)*100).toFixed(1)) : 0;
+    return { etablissement, ap: apCount, expected, received, rate };
+  }).sort((a,b)=> (a.rate - b.rate) || a.etablissement.localeCompare(b.etablissement));
+
+  res.json({ rows, expectedEvalCount });
+});
 
   app.get('/api/summary/by-etab', isAuth, isInsp, withInsp, async (req,res)=>{
-  const { cycle, specialite, evaluation, trimestre, etablissement, departement } = req.query;
+  const { cycle, specialite, evaluation, trimestre, etablissement, departement, classe } = req.query;
   if(!cycle || !specialite) return res.status(400).json({ error:'cycle & specialite requis' });
 
   const f = { inspection:req.insp, cycle:String(cycle), specialite:String(specialite).toUpperCase() };
@@ -406,10 +616,12 @@ const sessionMiddleware = session({
       });
       T.animateurs.add(F.animateur);
       T.evals.add(F.evaluation);
-      (F.classes||[]).forEach(c=>{
-        T.classes++;
-        getDiscs(c).forEach(d=>{ T.disc++; addTotals(T,d); });
-      });
+     (F.classes||[]).forEach(c=>{
+      const base = normStrict(splitClassLabel(c?.nom||'').base);
+      if (wantClass && base !== baseCible) return;
+      T.classes++;
+      getDiscs(c).forEach(d=>{ T.disc++; addTotals(T,d); });
+    });
     }
     const rows = Object.values(byE).map(T=>({
       etablissement:T.etablissement,
@@ -436,8 +648,8 @@ app.get('/api/summary/by-class', isAuth, isInsp, withInsp, async (req,res)=>{
   const agg = {};
   fiches.forEach(F=>{
     (F.classes||[]).forEach(c=>{
-      const key = c.nom || '—';
-      const T = (agg[key] ||= { n:0, ...emptyTotals() });
+      const key = splitClassLabel(c.nom || '').base || '—';
+const T = (agg[key] ||= { n:0, ...emptyTotals() });
       getDiscs(c).forEach(d=> addTotals(T,d));
       T.n++;
     });
@@ -468,11 +680,12 @@ app.get('/api/summary/form-view', isAuth, isInsp, withInsp, async (req,res)=>{
     .sort({ ordre:1, nom:1 }).lean();
   const expected = (discs.length ? discs.map(d=>d.nom) : (EXPECTED_BY_SPEC[SPEC] || []));
 
-  const discovered = new Set();
-  for (const F of fiches) (F.classes||[]).forEach(c=>{
-    const name = String(c.nom||'').trim();
-    if (name) discovered.add(name);
-  });
+ const discovered = new Set();
+for (const F of fiches) (F.classes||[]).forEach(c=>{
+  const base = splitClassLabel(c.nom || '').base;
+  const name = String(base || '').trim();
+  if (name) discovered.add(name);
+});
 
   let classNames = Array.from(discovered).sort((a,b)=> a.localeCompare(b));
   if (!classNames.length) {
@@ -480,8 +693,19 @@ app.get('/api/summary/form-view', isAuth, isInsp, withInsp, async (req,res)=>{
     classNames = (preset?.classes?.length ? preset.classes : (CLASSES_BY_SPEC[SPEC] || []));
   }
 
-  const build = (name)=> buildFormViewForClass(fiches, expected, name);
+  // nb d'évals attendues selon le filtre : 1 (eval X), 2 (T1/T2/T3), 6 (annuel)
+  const expectedEvalCount =
+    evaluation ? 1 :
+    (trimestre ? (TRI[trimestre]?.length || 0) : 6);
+
+  const build = (name)=> buildFormViewForClass(
+    fiches,         // dépôts filtrés
+    expected,       // référentiel de disciplines
+    name,           // classe
+    expectedEvalCount
+  );
   if (classe) return res.json(build(classe));
+  res.set('Cache-Control','no-store');
   res.json(classNames.map(build));
 });
 
@@ -555,7 +779,14 @@ app.get('/api/summary/form-view', isAuth, isInsp, withInsp, async (req,res)=>{
 
   /* ======== NOUVELLES ROUTES ======== */
 // Routes AP (saisie effectifs & personnel)
-app.use('/api/ap', requireAuth, require('./routes/ap'));
+app.use(
+ '/api/ap',
+  requireAuth,
+  requireRole('anim'),
+  limitToInspection(),
+  limitAnimToOwnEtab(),
+  require('./routes/ap')
+);
   // 1) Explorateur “région”
   app.get('/api/summary/topology', isAuth, isInsp, withInsp, async (req,res)=>{
     const { annee, evaluation, trimestre } = req.query;
@@ -569,7 +800,10 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
     for (const F of fiches){
       const cycle = String(F.cycle);
       const spec  = String(F.specialite||'').toUpperCase();
-      const classes = (F.classes||[]).map(c=> String(c.nom||'').trim()).filter(Boolean);
+     const classes = (F.classes||[])
+  .map(c => splitClassLabel(c.nom || '').base)
+  .map(s => String(s).trim())
+  .filter(Boolean);
       if (!byCycle.has(cycle)) byCycle.set(cycle, new Map());
       const mapSpec = byCycle.get(cycle);
       if (!mapSpec.has(spec)) mapSpec.set(spec, new Set());
@@ -585,53 +819,104 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
     res.json({ cycles });
   });
 
-  // 2) KPI
- app.get('/api/summary/kpis', isAuth, isInsp, withInsp, async (req,res)=>{
+  // 2) KPI (mixe Carte scolaire + Paramètres pédagogiques)
+app.get('/api/summary/kpis', isAuth, isInsp, withInsp, async (req,res)=>{
   const { annee, cycle, specialite, classe, evaluation, trimestre, etablissement, departement } = req.query;
 
+  // ---- Filtre commun pour les collectes (pédagogie + effectifs élèves)
   const f = { inspection:req.insp };
   if (annee)      f.annee = String(annee);
   if (cycle)      f.cycle = String(cycle);
   if (specialite) f.specialite = String(specialite).toUpperCase();
   if (evaluation) f.evaluation = Number(evaluation);
   else if (trimestre) f.evaluation = { $in: TRI[trimestre]||[] };
-
-  // 👇 ciblage fin côté inspecteur
   if (etablissement) f.etablissement = etablissement;
   if (departement)   f.departement   = departement;
 
-    const fiches = await Collecte.find(f).lean();
+  // ---- 1) Récup collecte (pour taux + élèves)
+  const fiches = await Collecte.find(f).lean();
 
-    const estab = new Set();
-    const anims = new Set();
-    let depots = 0;
-    const T = emptyTotals();
+  // ---- 2) Récup personnel enseignant (carte scolaire)
+  // (La collection Teacher n’a pas cycle/specialité; on filtre sur insp + (annee) + (etab si fourni))
+  const ft = { inspection:req.insp };
+  if (annee)      ft.annee = String(annee);
+  if (etablissement) ft.etablissement = etablissement;
+  // (si tu stockes departement dans Teacher, ajoute-le ici)
+  const profs = await Teacher.find(ft).lean();
 
-    for (const F of fiches){
-      depots += 1;
-      estab.add(F.etablissement||'—');
-      if (F.animateur) anims.add(F.animateur);
-      (F.classes||[]).forEach(c=>{
-        if (classe && normStrict(c.nom) !== normStrict(classe)) return;
-        getDiscs(c).forEach(d=> addTotals(T,d));
+  // ---- 3) Agrégations communes
+  const etablissements = new Set();
+  const apActifs       = new Set();
+  let depots           = 0;
+
+  // Taux pédagogiques (depuis disciplines)
+  const Taux = emptyTotals();
+
+  // Élèves (depuis carte scolaire => classes[].filles/garcons ; fallback comp)
+  let filles = 0, garcons = 0, fallbackComp = 0;
+
+  for (const F of fiches){
+    depots += 1;
+    etablissements.add(F.etablissement || '—');
+    if (F.animateur) apActifs.add(F.animateur);
+
+    // Classes filtrées par "classe" (fusion des divisions)
+    for (const c of (F.classes||[])) {
+      if (classe) {
+        const baseCible    = normStrict(splitClassLabel(classe).base);
+        const baseCourante = normStrict(splitClassLabel(c.nom || '').base);
+        if (baseCourante !== baseCible) continue;
+      }
+
+      // élèves carte scolaire
+      const fC = Number(c.filles||0);
+      const gC = Number(c.garcons||0);
+      filles  += fC;
+      garcons += gC;
+
+      // taux depuis disciplines
+      getDiscs(c).forEach(d => {
+        addTotals(Taux, d);
+        // fallback élèves (si pas de saisie filles/garçons)
+        fallbackComp += n(d, 'comp','Comp');
       });
     }
+  }
 
-    const P = packTotals(T);
-    res.json({
-      etablissements: estab.size,
-      apActifs: anims.size,
-      depots,
-      effectifsRegion: { enseignantsTotaux: T.EffT, enseignantsEnPoste: T.EffP, eleves: T.Comp },
-      taux: {
-        couvertureHeures: P.H, leconsFaites: P.Pc, leconsDigitalFaites: P.Pd,
-        tpFaits: P.Tc, tpDigitalFaits: P.Td, reussite: P.R
-      }
-    });
+  // Élèves total
+  const totalEleves = (filles + garcons) || fallbackComp;
+
+  // Enseignants (depuis Teacher)
+  const enseignantsTotaux  = profs.length;
+  // Heuristique simple "en poste" : statut non vide et pas marqué "vacant"/"non affecté"
+  const enseignantsEnPoste = profs.filter(p => !String(p.statut||'').match(/vacant|non\s*affecte/i)).length;
+
+  // Taux pédagogiques
+  const P = packTotals(Taux);
+
+  res.json({
+    etablissements: etablissements.size,
+    apActifs:       apActifs.size,
+    depots,
+    effectifsRegion: {
+      enseignantsTotaux,
+      enseignantsEnPoste,
+      eleves: totalEleves
+    },
+    taux: {
+      couvertureHeures:      P.H,
+      leconsFaites:          P.Pc,
+      leconsDigitalFaites:   P.Pd,
+      tpFaits:               P.Tc,
+      tpDigitalFaits:        P.Td,
+      reussite:              P.R
+    }
   });
+});
 
-  // 3) Carte scolaire régionale (enrichie)
-  app.get('/api/summary/school-map', isAuth, isInsp, withInsp, async (req,res)=>{
+
+  // 3) Carte scolaire régionale (agrège divisions, élèves & enseignants)
+app.get('/api/summary/school-map', isAuth, isInsp, withInsp, async (req,res)=>{
   const { annee, evaluation, trimestre, cycle, specialite, etablissement, departement } = req.query;
 
   const f = { inspection:req.insp };
@@ -640,87 +925,96 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
   if (specialite) f.specialite = String(specialite).toUpperCase();
   if (evaluation) f.evaluation = Number(evaluation);
   else if (trimestre) f.evaluation = { $in: TRI[trimestre]||[] };
-
-  // 👇 filtres régionaux précis
   if (etablissement) f.etablissement = etablissement;
   if (departement)   f.departement   = departement;
 
+  const fiches = await Collecte.find(f).lean();
 
-    const fiches = await Collecte.find(f).lean();
+  // Préchargement du personnel par établissement
+  const ft = { inspection:req.insp };
+  if (annee)      ft.annee = String(annee);
+  // si filtre établissement unique, on le met; sinon on chargera par set des etab plus bas
+  const allTeachers = await Teacher.find(ft).lean();
+  const byEtabTeachers = new Map();
+  for (const t of allTeachers){
+    const key = t.etablissement || '—';
+    if (!byEtabTeachers.has(key)) byEtabTeachers.set(key, []);
+    byEtabTeachers.get(key).push(t);
+  }
 
-    const byE = new Map();
-    const regionTotals = { etabs:0, ap:new Set(), EfT:0, EfP:0, filles:0, garcons:0, eleves:0, classes:new Set() };
+  // Agrégation par établissement
+  const byE = new Map();
+  const region = { ap:new Set(), filles:0, garcons:0, eleves:0, classes:new Set(), ensT:0, ensP:0 };
 
-    for (const F of fiches){
-      const key = F.etablissement || '—';
-      if (!byE.has(key)) byE.set(key, {
-        etablissement:key,
-        cycles:new Set(),
-        classesOuvertes:new Set(),
-        ap:new Set(),
-        apNoms:new Set(),
-        EfT:0, EfP:0, filles:0, garcons:0, Comp:0
-      });
-      const r = byE.get(key);
-
-      r.cycles.add(F.cycle);
-      if (F.animateur){ r.ap.add(F.animateur); r.apNoms.add(F.animateur); regionTotals.ap.add(F.animateur); }
-
-      (F.classes || []).forEach(c=>{
-        const cname = String(c.nom||'').trim();
-        if (cname){ r.classesOuvertes.add(cname); regionTotals.classes.add(cname); }
-
-        // effectifs par genre au niveau classe (si fournis)
-        addGenderFromClass(r, c);
-        regionTotals.filles  += pick(c,'filles','Filles','F','f');
-        regionTotals.garcons += pick(c,'garcons','Garcons','G','g');
-
-        getDiscs(c).forEach(d=>{
-          // enseignants
-          r.EfT += n(d, 'effTot', 'EffT', 'ensTot');
-          r.EfP += n(d, 'effPos', 'EffP', 'ensPoste');
-          regionTotals.EfT += n(d, 'effTot', 'EffT', 'ensTot');
-          regionTotals.EfP += n(d, 'effPos', 'EffP', 'ensPoste');
-
-          // élèves (composition globale si déclarée côté discipline)
-          const comp = n(d, 'comp', 'Comp');
-          r.Comp += comp; regionTotals.eleves += comp;
-
-          // genre au niveau discipline (fallback)
-          addGenderFromDisc(r, d);
-          regionTotals.filles  += pick(d,'filles','Filles','F','f');
-          regionTotals.garcons += pick(d,'garcons','Garcons','G','g');
-        });
-      });
-    }
-
-    const rows = Array.from(byE.values()).map(r=>({
-      etablissement       : r.etablissement,
-      cyclesOuverts       : Array.from(r.cycles).sort(),
-      classesOuvertes     : Array.from(r.classesOuvertes).sort(),
-      apList              : Array.from(r.apNoms).sort(),
-      apActifs            : r.ap.size,
-      enseignantsTotaux   : r.EfT,
-      enseignantsEnPoste  : r.EfP,
-      filles              : r.filles,
-      garcons             : r.garcons,
-      eleves              : (r.filles + r.garcons) || r.Comp
-    })).sort((a,b)=> a.etablissement.localeCompare(b.etablissement));
-
-    res.json({
-      rows,
-      region: {
-        etablissements     : rows.length,
-        apActifs           : regionTotals.ap.size,
-        enseignantsTotaux  : regionTotals.EfT,
-        enseignantsEnPoste : regionTotals.EfP,
-        filles             : regionTotals.filles,
-        garcons            : regionTotals.garcons,
-        eleves             : (regionTotals.filles + regionTotals.garcons) || regionTotals.eleves,
-        classesOuvertes    : Array.from(regionTotals.classes).sort()
-      }
+  for (const F of fiches){
+    const key = F.etablissement || '—';
+    if (!byE.has(key)) byE.set(key, {
+      etablissement:key,
+      cycles:new Set(),
+      classesOuvertes:new Set(),
+      apNoms:new Set(),
+      filles:0, garcons:0, compFallback:0
     });
+    const r = byE.get(key);
+
+    r.cycles.add(F.cycle);
+    if (F.animateur){ r.apNoms.add(F.animateur); region.ap.add(F.animateur); }
+
+    for (const c of (F.classes||[])){
+      const base = splitClassLabel(c.nom || '').base.trim();
+      if (base){ r.classesOuvertes.add(base); region.classes.add(base); }
+
+      // élèves par classe (carte scolaire)
+      const fC = Number(c.filles||0), gC = Number(c.garcons||0);
+      r.filles += fC;  r.garcons += gC;
+      region.filles  += fC; region.garcons += gC;
+
+      // fallback comp depuis disciplines
+      getDiscs(c).forEach(d => { r.compFallback += n(d,'comp','Comp'); });
+    }
+  }
+
+  // Injecte le personnel issu de Teacher
+  const rows = Array.from(byE.values()).map(r=>{
+    const profs = byEtabTeachers.get(r.etablissement) || [];
+    const ensT  = profs.length;
+    const ensP  = profs.filter(p => !String(p.statut||'').match(/vacant|non\s*affecte/i)).length;
+
+    // maj région
+    region.ensT += ensT; region.ensP += ensP;
+
+    const eleves = (r.filles + r.garcons) || r.compFallback;
+
+    return {
+      etablissement      : r.etablissement,
+      cyclesOuverts      : Array.from(r.cycles).sort(),
+      classesOuvertes    : Array.from(r.classesOuvertes).sort(),
+      apList             : Array.from(r.apNoms).sort(),
+      apActifs           : r.apNoms.size,
+      enseignantsTotaux  : ensT,
+      enseignantsEnPoste : ensP,
+      filles             : r.filles,
+      garcons            : r.garcons,
+      eleves
+    };
+  }).sort((a,b)=> a.etablissement.localeCompare(b.etablissement));
+
+  const regionEleves = (region.filles + region.garcons) || rows.reduce((s,x)=> s + (x.eleves||0), 0);
+
+  res.json({
+    rows,
+    region:{
+      etablissements     : rows.length,
+      apActifs           : region.ap.size,
+      enseignantsTotaux  : region.ensT,
+      enseignantsEnPoste : region.ensP,
+      filles             : region.filles,
+      garcons            : region.garcons,
+      eleves             : regionEleves,
+      classesOuvertes    : Array.from(region.classes).sort()
+    }
   });
+});
 
   // 3bis) Fichiers du personnel agrégés
   app.get('/api/summary/staff-files', isAuth, isInsp, withInsp, async (req,res)=>{
@@ -798,6 +1092,7 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
   // Lecture d'un dépôt
   app.get('/api/summary/deposits/:id', isAuth, isInsp, withInsp, async (req, res) => {
     const { id } = req.params;
+    
     const doc = await Collecte.findOne({ _id: id, inspection: req.insp }).lean();
     if (!doc) return res.status(404).json({ error: 'not found' });
 
@@ -842,13 +1137,16 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
     }
   });
 
-  /* Accueil selon rôle */
-  app.get('/', (req,res)=>{
-    if(!req.user)               return res.render('home');
-    if(req.user.role==='admin') return res.redirect('/admin');
-    if(req.user.role==='insp')  return res.redirect('/inspector');
-    return res.redirect('/collecte/nouvelle');
-  });
+  // Accueil : si pas connecté → login.ejs ; sinon → redirection selon rôle
+app.get('/', (req, res) => {
+  if (!req.user) {
+    const role = ['admin','anim','insp'].includes(req.query.role) ? req.query.role : 'anim';
+    return res.render('login', { error: null, role }); // 👈 on rend login.ejs ici
+  }
+  if (req.user.role === 'admin') return res.redirect('/admin');
+  if (req.user.role === 'insp')  return res.redirect('/inspector');
+  return res.redirect('/collecte/nouvelle');
+});
 
   /* ===== Routes métier ===== */
   app.use(
@@ -856,6 +1154,7 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
   requireAuth,
   limitToInspection(),
   limitAnimToOwnEtab(),
+  requireRole('anim'), 
   require('./routes/collecte')
 );
 
@@ -867,12 +1166,19 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
   fichiersRouter
 );
   // APIs paramétrage
-  app.use('/api/settings',    require('./routes/settings'));
-  app.use('/api/inspections', require('./routes/inspections'));
-  app.use('/api/disciplines', require('./routes/disciplines'));
-  app.use('/api/presets',     require('./routes/presets'));
+ app.use(
+   '/api/settings',
+   requireAuth,
+   limitToInspection(),   // impose req.query/body.inspection = req.user.inspection
+   limitAnimToOwnEtab(),  // impose req.query/body.etablissement = req.user.etab (pour anim)
+   require('./routes/settings')
+ );
+ app.use('/api/inspections', requireAuth, limitToInspection(), require('./routes/inspections'));
+ app.use('/api/disciplines', requireAuth, limitToInspection(), require('./routes/disciplines'));
+ app.use('/api/presets',     requireAuth, limitToInspection(), require('./routes/presets'));
   app.use('/api/carte', isAuth, isInsp, withInsp, carteRoutes);
-
+// ⬇️ Alias pour les appels qui commencent par /api/inspecteur/carte/...
+app.use('/api/inspecteur/carte', isAuth, isInsp, withInsp, carteRoutes);
   // Submissions & messages – montés si présents
   if (fs.existsSync(path.join(__dirname,'routes','submissions.js'))) {
     app.use('/api/submissions', require('./routes/submissions'));
@@ -888,9 +1194,82 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
     if(!['insp','admin'].includes(u.role)) return res.status(403).send('forbidden');
     res.render('ref_disciplines',{ user:u });
   });
+/* -------- PURGE DES DONNÉES (anim) -------- */
+app.post('/api/purge', async (req, res) => {
+  try {
+    // sécurités déjà en place pour /api via app.use('/api', requireAuth, limitToInspection(), limitAnimToOwnEtab())
+    const u = req.user; // { id, nom, etab, inspection, role, ... }
+    const {
+      annee,                          // optionnel (ex: "2025-2026")
+      options = {                     // cases à cocher dans la modale
+        collectes: true,
+        settings : true,
+        files    : true,
+        chat     : true,
+      }
+    } = req.body || {};
 
-  // 404 JSON API
-  app.use('/api', (_req,res)=> res.status(404).json({ error:'not found' }));
+    const fBase = {
+      inspection  : String(u.inspection || '').toLowerCase(),
+      etablissement: u.etab,
+    };
+    if (annee) fBase.annee = String(annee);
+
+    const ops = [];
+
+    /* 1) Fiches de collecte de l'animateur (toutes évaluations) */
+    if (options.collectes) {
+      // Dans tes collectes, l’animateur est stocké en clair (voir soumettre() côté front)
+      ops.push(Collecte.deleteMany({ ...fBase, animateur: u.nom }));
+    }
+
+    /* 2) Paramètres établissement (effectifs, personnel, baselines) */
+    if (options.settings) {
+      // Les Settings ne sont pas par utilisateur mais par établissement/année/inspection
+      // → on supprime la configuration de l’établissement de l’animateur
+      const q = { ...fBase };
+      delete q.etablissement; // on garde l’etab ci-dessous
+      ops.push(Settings.deleteMany({ inspection: fBase.inspection, etablissement: u.etab, ...(annee ? { annee } : {}) }));
+      ops.push(Baseline.deleteMany({ inspection: fBase.inspection, etablissement: u.etab, ...(annee ? { annee } : {}) }));
+    }
+
+    /* 3) Fichiers partagés (dans /uploads) */
+    if (options.files) {
+      const uploadsRoot = path.join(process.cwd(), 'uploads');
+      // Dans la plupart des installs on a un arborescence du type /uploads/<inspection>/<etablissement>/...
+      const dir1 = path.join(uploadsRoot, String(u.inspection || '').toLowerCase(), u.etab);
+      // Sécurise le chemin et supprime récursivement si présent
+      const safeRm = async (abs) => {
+        if (!abs.startsWith(uploadsRoot)) return; // garde-fou
+        try { await fs.promises.rm(abs, { recursive: true, force: true }); } catch (_) {}
+      };
+      await safeRm(dir1);
+    }
+
+    /* 4) Messages du forum / chat temps réel */
+    if (options.chat) {
+      // Le modèle importé en haut s’appelle Message
+      // On supprime les messages écrits par cet utilisateur dans son inspection (etabl. si tu veux limiter)
+      const q = { inspection: fBase.inspection, from: u.nom };
+      // si tu stockes l’établissement dans le message, dé-commente la ligne suivante
+      // q.etablissement = u.etab;
+      ops.push(Message.deleteMany(q));
+    }
+
+    await Promise.all(ops);
+
+    // Optionnel: notifier via socket.io
+    try { req.app.get('io')?.emit('admin:purge', { ok:true, user:u.nom, etab:u.etab }); } catch (_) {}
+
+    res.json({ ok:true, message:'Les données sélectionnées ont été supprimées.' });
+  } catch (e) {
+    console.error('PURGE /api/purge error:', e);
+    res.status(500).json({ error: e.message || 'server_error' });
+  }
+});
+
+
+
 
   /* ===== Socket.IO (chat) ===== */
   const { Server } = require('socket.io');
@@ -899,6 +1278,30 @@ app.use('/api/ap', requireAuth, require('./routes/ap'));
   io.use((socket,next)=> sessionMiddleware(socket.request, {}, next));
   require('./server/sockets/chat')(io);
 
+ // 🔽 place ce bloc APRÈS app.set('io', io) et require('./server/sockets/chat')(io)
+
+const chatStore = require('./db/chat'); // ou utilise attachChat.purge
+
+app.delete('/api/chat/reset', requireAuth, requireRole('insp'), async (req, res) => {
+  try {
+    const inspection = String(req.query.inspection || req.user?.inspection || '').trim().toLowerCase();
+    if (!inspection) return res.status(400).json({ ok:false, error:'inspection required' });
+
+    const room = `insp:${inspection}`;
+    chatStore.clearRoom(room);            // ✅ on efface la room dans SQLite
+
+    const io = req.app.get('io');
+    io.to(room).emit('chat:history', []); // vide chez les clients
+    res.json({ ok:true });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: String(e.message || e) });
+  }
+});
+
+
+
+  // 404 JSON API
+  app.use('/api', (_req,res)=> res.status(404).json({ error:'not found' }));
   /* ===== Error handler ===== */
   app.use((err, req, res, _next)=>{
     console.error('💥', err);

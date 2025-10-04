@@ -1,0 +1,47 @@
+<table>
+  <thead>
+    <tr>
+      <th>No</th>
+      <th>Noms et prénoms</th>
+      <th>Matricule</th>
+      <th>Grade</th>
+      <th>Catégorie</th>
+      <th>Date de naissance</th>
+      <th>Sexe</th>
+      <th>Région d'origine</th>
+      <th>Département d'origine</th>
+      <th>Arrondissement d'origine</th>
+      <th>Date d'entrée à la fonction publique</th>
+      <th>Poste occupé</th>
+      <th>Date d’affectation ou de nomination</th>
+      <th>Rang du poste</th>
+      <th>Contact téléphonique</th>
+    </tr>
+  </thead>
+  <tbody id="rows">
+  <% 
+    const _page  = Number(page || 1);
+    const _limit = Number(limit || (items ? items.length : 0) || 0);
+    const baseNo = (_page > 0 && _limit > 0) ? (_page - 1) * _limit : 0;
+    (items||[]).forEach((r, i) => { 
+  %>
+    <tr>
+      <td><%= baseNo + i + 1 %></td>
+      <td><%= r.nom || '' %></td>
+      <td><%= r.matricule || '' %></td>
+      <td><%= r.grade || '' %></td>
+      <td><%= r.categorie || '' %></td>
+      <td><%= r.dateNaissance ? new Date(r.dateNaissance).toISOString().slice(0,10) : '' %></td>
+      <td><%= r.sexe || '' %></td>
+      <td><%= r.regionOrigine || '' %></td>
+      <td><%= r.departementOrigine || '' %></td>
+      <td><%= r.arrondissementOrigine || '' %></td>
+      <td><%= r.dateEntreeFP ? new Date(r.dateEntreeFP).toISOString().slice(0,10) : '' %></td>
+      <td><%= r.posteOccupe || '' %></td>
+      <td><%= r.dateAffectation ? new Date(r.dateAffectation).toISOString().slice(0,10) : '' %></td>
+      <td><%= r.rangPoste || '' %></td>
+      <td><%= r.telephone || '' %></td>
+    </tr>
+  <% }) %>
+  </tbody>
+</table>

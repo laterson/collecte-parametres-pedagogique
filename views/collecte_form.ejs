@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <title>Collecte des indicateurs – <%= ((user && user.inspection)||'Inspection').toUpperCase() %></title>
   <style>
+
+    .btn.danger{background:#fff5f5;border-color:#fecaca;color:#b91c1c}
+.btn.danger:hover{background:#fee2e2}
+.warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px}
+
     :root{--bg:#f7f7f7;--b:#cfd4da;--th:#eef1f4;--ink:#1f2937;--muted:#6b7280;--brand:#2563eb;--brand-2:#1e40af}
     *{box-sizing:border-box}
     body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);margin:0;color:var(--ink)}
@@ -196,6 +201,7 @@
 
     </div>
     <div class="top-actions">
+      <button class="btn danger" id="btnOpenPurge">🧹 Purger mes données</button>
       <button class="btn" id="btnOpenSettings">⚙️ Paramètres établissement</button>
       <button class="btn" id="btnOpenStaffExplorer">👩‍🏫 Personnel</button>
       <a class="btn" href="/collecte/mes">🗂️ Mes collectes</a>
@@ -488,6 +494,52 @@
   </div>
 </div>
 
+
+
+<!-- ============ MODALE PURGE ============ -->
+<div class="modal" id="purgeModal" aria-hidden="true">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="purgeTitle">
+    <header>
+      <div>
+        <h3 id="purgeTitle" style="margin:0;">🧹 Purger mes données</h3>
+        <div class="subtle">Cette action est irréversible. Choisissez ce que vous souhaitez supprimer.</div>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="btnClosePurge">Fermer</button>
+      </div>
+    </header>
+
+    <div class="content" style="padding:12px">
+      <div class="warn" style="margin-bottom:10px">
+        ⚠️ <b>Attention</b> : la purge supprime définitivement les données sélectionnées pour 
+        <em><%= (user && user.etab) || '—' %></em> et l’utilisateur <em><%= (user && user.nom) || '—' %></em>.
+      </div>
+
+      <div class="card">
+        <h3>Que voulez-vous supprimer ?</h3>
+        <label><input type="checkbox" id="purgeCollectes" checked> Mes <b>collectes</b> (toutes évaluations)</label>
+        <label><input type="checkbox" id="purgeSettings"  checked> Mes <b>paramètres établissement</b> (effectifs, personnel, baselines)</label>
+        <label><input type="checkbox" id="purgeFiles"     checked> Mes <b>documents partagés</b></label>
+        <label><input type="checkbox" id="purgeChat"      checked> Mes <b>messages du forum</b></label>
+      </div>
+
+      <div class="muted" style="margin-top:8px">
+        Astuce : décochez ce que vous souhaitez conserver.
+      </div>
+    </div>
+
+    <footer>
+      <div class="subtle">Une confirmation vous sera demandée avant exécution.</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="btnCancelPurge">Annuler</button>
+        <button class="btn danger" id="btnDoPurge">🧹 Purger maintenant</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+
+
 <!-- ===== MODALE EXPLORATEUR PERSONNEL (consultation fiche complète) ===== -->
 <div class="modal" id="staffExplorerModal" aria-hidden="true">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="staffExplorerTitle">
@@ -506,11 +558,21 @@
     <div class="content" style="padding:12px">
       <table class="grid-staff" id="staffExplorerTable">
         <thead>
-          <tr>
-            <th>Nom</th><th>Grade</th><th>Matière</th><th>Statut</th>
-            <th>Classes tenues</th><th>Disciplines enseignées</th><th>Obs.</th><th></th>
-          </tr>
-        </thead>
+  <tr>
+    <th>Nom</th>
+    <th>Prénom</th>
+    <th>Grade</th>
+    <th>Matricule</th>
+    <th>Matière</th>
+    <th>Statut</th>
+    <th>Téléphone</th>
+    <th>Classes tenues</th>
+    <th>Disciplines enseignées</th>
+    <th>Obs.</th>
+    <th></th>
+  </tr>
+</thead>
+
         <tbody id="staffExplorerTbody"></tbody>
       </table>
     </div>
@@ -566,6 +628,83 @@
             </div>
           </div>
         </section>
+
+        <section class="pane">
+  <h4 style="margin:6px 0 8px">Informations personnelles</h4>
+  <div class="bwrap">
+    <div class="hstack">
+      <div style="flex:1">
+        <label class="subtle">Prénom</label>
+        <input id="ssPrenom" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+      <div style="flex:1">
+        <label class="subtle">Matricule</label>
+        <input id="ssMatricule" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+    </div>
+    <div class="hstack">
+      <div style="flex:1">
+        <label class="subtle">Date de naissance</label>
+        <input id="ssDateNaissance" type="date" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+      <div style="flex:1">
+        <label class="subtle">Sexe</label>
+        <select id="ssSexe" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+          <option value="">—</option>
+          <option value="M">Masculin</option>
+          <option value="F">Féminin</option>
+        </select>
+      </div>
+    </div>
+    <div class="hstack">
+      <div style="flex:1">
+        <label class="subtle">Téléphone</label>
+        <input id="ssTelephone" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+      <div style="flex:1">
+        <label class="subtle">Catégorie</label>
+        <input id="ssCategorie" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+    </div>
+    <div class="hstack">
+      <div style="flex:1">
+        <label class="subtle">Région d'origine</label>
+        <input id="ssRegionOrigine" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+      <div style="flex:1">
+        <label class="subtle">Département d'origine</label>
+        <input id="ssDepartementOrigine" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+    </div>
+    <div class="hstack">
+      <div style="flex:1">
+        <label class="subtle">Arrondissement d'origine</label>
+        <input id="ssArrondissementOrigine" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+      <div style="flex:1">
+        <label class="subtle">Poste occupé</label>
+        <input id="ssPosteOccupe" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+    </div>
+    <div class="hstack">
+      <div style="flex:1">
+        <label class="subtle">Rang du poste</label>
+        <input id="ssRangPoste" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+      <div style="flex:1">
+        <label class="subtle">Date d'entrée dans la FP</label>
+        <input id="ssDateEntreeFP" type="date" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+    </div>
+    <div class="hstack">
+      <div style="flex:1">
+        <label class="subtle">Date d'affectation</label>
+        <input id="ssDateAffectation" type="date" style="width:100%;padding:6px 8px;border:1px solid var(--b);border-radius:8px">
+      </div>
+    </div>
+  </div>
+</section>
+
         <section class="pane">
           <h4 style="margin:6px 0 8px">Affectations</h4>
           <div class="bwrap">
@@ -594,7 +733,76 @@
     </footer>
   </div>
 </div>
-<script src="/socket.io/socket.io.js"></script> <script>
+<script src="/socket.io/socket.io.js"></script> // <!-- Assurez-vous que cette ligne reste AVANT le script qui suit -->
+<script>
+/******************** PURGE ********************/
+const purgeModal = document.getElementById('purgeModal');
+const btnOpenPurge = document.getElementById('btnOpenPurge');
+const btnClosePurge = document.getElementById('btnClosePurge');
+const btnCancelPurge = document.getElementById('btnCancelPurge');
+const btnDoPurge = document.getElementById('btnDoPurge');
+
+btnOpenPurge?.addEventListener('click', (e)=>{ e.preventDefault(); openModal(purgeModal); });
+btnClosePurge?.addEventListener('click', ()=> closeModal(purgeModal));
+btnCancelPurge?.addEventListener('click', ()=> closeModal(purgeModal));
+
+async function doPurge(){
+  const opts = {
+    collectes: document.getElementById('purgeCollectes')?.checked ?? false,
+    settings:  document.getElementById('purgeSettings')?.checked ?? false,
+    files:     document.getElementById('purgeFiles')?.checked ?? false,
+    chat:      document.getElementById('purgeChat')?.checked ?? false
+  };
+  if(!opts.collectes && !opts.settings && !opts.files && !opts.chat){
+    alert('Sélectionnez au moins un élément à supprimer.');
+    return;
+  }
+  const labelParts = [];
+  if(opts.collectes) labelParts.push('collectes');
+  if(opts.settings)  labelParts.push('paramètres établissement');
+  if(opts.files)     labelParts.push('documents partagés');
+  if(opts.chat)      labelParts.push('messages du forum');
+
+  const confirmTxt = `Confirmez-vous la suppression DEFINITIVE de : ${labelParts.join(', ')} ?`;
+  if(!confirm(confirmTxt)) return;
+
+  btnDoPurge.disabled = true;
+
+  try{
+    // Appel unique côté serveur, avec flags (adapter le chemin si besoin)
+    const res = await postJSON('/api/purge', { 
+      etab: CONNECTED_USER.etab,
+      userId: CONNECTED_USER.id,
+      inspection: CONNECTED_USER.inspection,
+      options: opts 
+    });
+
+    // Nettoyage côté client (UI / caches)
+    if(opts.settings){ SETTINGS_CACHE = null; }
+    if(opts.files){ FILES_CACHE = []; updateFileCounters?.(); renderFiles?.(); }
+    // On vide la collecte à l’écran s’il y en a une affichée
+    if(opts.collectes){
+      formulaires.innerHTML = '';
+      cycleTotalBloc.classList.add('hidden');
+      sumClasses.textContent = '0';
+      badgeClasses.classList.add('hidden');
+    }
+
+    alert(res?.message || 'Purge effectuée avec succès.');
+    closeModal(purgeModal);
+    // Recharger pour repartir proprement
+    location.reload();
+
+  }catch(e){
+    alert('Erreur lors de la purge : ' + (e?.message||e));
+  }finally{
+    btnDoPurge.disabled = false;
+  }
+}
+btnDoPurge?.addEventListener('click', doPurge);
+
+
+
 /* Polyfill ultra-robuste pour CSS.escape (MDN), si absent */
 (function(global){
   if (global.CSS && typeof global.CSS.escape === "function") return;
@@ -608,33 +816,8 @@
     var firstCodeUnit = string.charCodeAt(0);
     while (++index < length) {
       codeUnit = string.charCodeAt(index);
-      // Handle NULL
-      if (codeUnit === 0x0000) {
-        result += "\uFFFD";
-        continue;
-      }
-      // Control characters
-      if (
-        (codeUnit >= 0x0001 && codeUnit <= 0x001F) ||
-        codeUnit === 0x007F ||
-        // start char restrictions
-        (index === 0 && (
-          (codeUnit >= 0x0030 && codeUnit <= 0x0039) || // [0-9]
-          codeUnit === 0x002D || // hyphen-minus
-          codeUnit === 0x002E   // dot
-        )) ||
-        // special chars
-        codeUnit === 0x0020 || codeUnit === 0x0021 || codeUnit === 0x0022 ||
-        codeUnit === 0x0023 || codeUnit === 0x0024 || codeUnit === 0x0025 ||
-        codeUnit === 0x0026 || codeUnit === 0x0027 || codeUnit === 0x0028 ||
-        codeUnit === 0x0029 || codeUnit === 0x002A || codeUnit === 0x002B ||
-        codeUnit === 0x002C || codeUnit === 0x002F || codeUnit === 0x003A ||
-        codeUnit === 0x003B || codeUnit === 0x003C || codeUnit === 0x003D ||
-        codeUnit === 0x003E || codeUnit === 0x003F || codeUnit === 0x0040 ||
-        codeUnit === 0x005B || codeUnit === 0x005C || codeUnit === 0x005D ||
-        codeUnit === 0x005E || codeUnit === 0x0060 || codeUnit === 0x007B ||
-        codeUnit === 0x007C || codeUnit === 0x007D || codeUnit === 0x007E
-      ) {
+      if (codeUnit === 0x0000) { result += "\uFFFD"; continue; }
+      if ((codeUnit >= 0x0001 && codeUnit <= 0x001F) || codeUnit === 0x007F || (index === 0 && ((codeUnit >= 0x0030 && codeUnit <= 0x0039) || codeUnit === 0x002D || codeUnit === 0x002E)) || codeUnit === 0x0020 || codeUnit === 0x0021 || codeUnit === 0x0022 || codeUnit === 0x0023 || codeUnit === 0x0024 || codeUnit === 0x0025 || codeUnit === 0x0026 || codeUnit === 0x0027 || codeUnit === 0x0028 || codeUnit === 0x0029 || codeUnit === 0x002A || codeUnit === 0x002B || codeUnit === 0x002C || codeUnit === 0x002F || codeUnit === 0x003A || codeUnit === 0x003B || codeUnit === 0x003C || codeUnit === 0x003D || codeUnit === 0x003E || codeUnit === 0x003F || codeUnit === 0x0040 || codeUnit === 0x005B || codeUnit === 0x005C || codeUnit === 0x005D || codeUnit === 0x005E || codeUnit === 0x0060 || codeUnit === 0x007B || codeUnit === 0x007C || codeUnit === 0x007D || codeUnit === 0x007E) {
         result += "\\" + codeUnit.toString(16) + " ";
       } else {
         result += string.charAt(index);
@@ -644,10 +827,8 @@
   };
   CSS.escape = _escape;
 })(window);
-</script>
 
-<script>
-  function openModal(el){ el.classList.add('open'); el.setAttribute('aria-hidden','false'); }
+function openModal(el){ el.classList.add('open'); el.setAttribute('aria-hidden','false'); }
 function closeModal(el){ el.classList.remove('open'); el.setAttribute('aria-hidden','true'); }
 
 document.querySelectorAll('.modal').forEach(m=>{
@@ -658,7 +839,6 @@ document.addEventListener('keydown', (e)=>{
   if(e.key==='Escape'){ document.querySelectorAll('.modal.open').forEach(closeModal); }
 });
 /************************** SESSION **************************/
-/* Injection sûre via JSON.stringify pour éviter les &quot; dans le JS */
 const CONNECTED_USER = <%- JSON.stringify({
   id: (user && user.id) || '',
   nom: (user && user.nom) || '',
@@ -687,45 +867,9 @@ const effStaffStat=document.getElementById('effStaffStat');
 const effStaffDetails=document.getElementById('effStaffDetails');
 const effTableWrap=document.getElementById('effTableWrap');
 
-// Afficher / charger selon les choix
-selCycle.addEventListener('change', async () => {
-  contSpec.classList.toggle('hidden', !selCycle.value);
-  selSpec.innerHTML = '<option value="">-- Choisir --</option>';
-  if (!selCycle.value) { contEval.classList.add('hidden'); formulaires.innerHTML=''; cycleTotalBloc.classList.add('hidden'); updateSummary(); return; }
-  try{
-    const rows = await getJSON(`/api/disciplines?inspection=${encodeURIComponent(CONNECTED_USER.inspection)}&cycle=${encodeURIComponent(selCycle.value)}&actif=true`);
-    [...new Set(rows.map(r=>r.specialite))].sort().forEach(s=> selSpec.insertAdjacentHTML('beforeend', `<option value="${s}">${s}</option>`));
-  }catch(_){}
-  updateSummary();
-});
-
-selSpec.addEventListener('change', async () => {
-  contEval.classList.toggle('hidden', !selSpec.value);
-  if (selCycle.value && selSpec.value) { await buildCollecteFor(selCycle.value, selSpec.value); }
-  updateSummary();
-});
-
-document.getElementById('evaluation').addEventListener('change', updateSummary);
-
-// Préremplir (version simple)
-btnPrefill.addEventListener('click', applyEffectifCapsAndPrefill);
-
-// Résumé + badge
-function updateSummary(){
-  sumSpec.textContent = selSpec.value || '—';
-  const ev = document.getElementById('evaluation').value;
-  sumEval.textContent = ev ? `Évaluation ${ev}` : '—';
-  const nb = document.querySelectorAll('.classeBloc').length;
-  sumClasses.textContent = String(nb);
-  badgeClasses.textContent = `${nb} classe${nb>1?'s':''}`;
-  badgeClasses.classList.toggle('hidden', nb===0);
-}
-
-// Impression (basique)
-function printCollecte(){ window.print(); }
-
 /******************** CACHE PARAMS ÉTABLISSEMENT ********************/
 let SETTINGS_CACHE=null;
+
 
 /******************** HELPERS API ********************/
 async function getJSON(url){
@@ -758,6 +902,16 @@ function getClassEffectifByName(name){
   return list
     .filter(e => splitClassLabel(e.classe||'').base.trim().toLowerCase() === base)
     .reduce((s,e)=> s + (+e.filles||0) + (+e.garcons||0), 0);
+}
+/**
+ * NOUVEAU HELPER : Récupère l'effectif pour une division spécifique.
+ * Prend en compte le label complet, ex: "1ère Année DECO (2)".
+ */
+function getDivisionEffectifByLabel(label) {
+  const list = SETTINGS_CACHE?.effectifs || [];
+  const entry = list.find(e => (e.classe || '') === label);
+  if (!entry) return 0; // Si la division n'est pas trouvée, retourne 0
+  return (+entry.filles || 0) + (+entry.garcons || 0);
 }
 
 
@@ -793,18 +947,26 @@ function lineHTML(nom){
 }
 
 /***** Pré-remplissage/caps avec effectifs *****/
+/***** Pré-remplissage/caps avec effectifs *****/
 function applyEffectifCapsAndPrefillFor(bloc){
   const cls = bloc.querySelector('h2')?.textContent?.trim() || '';
-  const eff = getClassEffectifByName(cls);
+  
+  // CORRECTION : On utilise la nouvelle fonction pour obtenir l'effectif de la division EXACTE.
+  const eff = getDivisionEffectifByLabel(cls);
+
   const rows = bloc.querySelectorAll('tbody tr:not(.totalRow)');
   rows.forEach(tr=>{
-    const comp = tr.querySelector('.val16');
-    const m10 = tr.querySelector('.val17');
+    const comp = tr.querySelector('.val16'); // "Nbre d'élèves ayant composé"
+    const m10 = tr.querySelector('.val17');  // "Nbre de moy >= 10/20"
+    
     if (comp){
-      const v = +comp.value||0;
-      if (eff>0 && v===0) comp.value = eff;
-      if (eff>0 && +comp.value>eff) comp.value = eff;
+      const v = +comp.value || 0;
+      // On pré-remplit le champ avec l'effectif de la division si le champ est vide.
+      if (eff > 0 && v === 0) comp.value = eff;
+      // On s'assure que la valeur ne dépasse jamais l'effectif de la division (le "cap").
+      if (eff > 0 && +comp.value > eff) comp.value = eff;
     }
+    // On s'assure que le nombre de moyennes > 10 ne dépasse pas le nombre d'élèves ayant composé.
     if (m10 && comp && (+m10.value > +comp.value)) m10.value = comp.value;
   });
 }
@@ -845,34 +1007,84 @@ async function getPresetClassesCouple(cyc, spec){
   }catch(_){ return []; }
 }
 async function buildCollecteFor(cyc, spec){
-  formulaires.innerHTML='';
+  formulaires.innerHTML=''; // On vide la zone
+
+  if (!cyc || !spec) {
+    cycleTotalBloc.classList.add('hidden');
+    updateSummary();
+    return;
+  }
+
+  // S'assurer que les paramètres de l'établissement sont chargés
+  if (!SETTINGS_CACHE) {
+    await refreshSettingsSidebar(); 
+  }
+
+  // 1. D'abord, on récupère la liste des classes de base qui sont ATTENDUES pour ce couple.
+  // C'est notre liste de référence pour le filtrage.
+  const expectedBases = await getDefaultClassesFor(cyc, spec);
+  
+  if (!expectedBases.length) {
+      console.warn(`Aucune classe de base n'est définie pour le couple ${cyc} / ${spec}.`);
+      cycleTotalBloc.classList.add('hidden');
+      updateSummary();
+      return;
+  }
+
+  // 2. On récupère TOUS les effectifs configurés par l'utilisateur.
+  const allConfiguredClasses = SETTINGS_CACHE?.effectifs || [];
+
+  // 3. ON FILTRE ! C'est l'étape clé. On ne garde que les effectifs dont la "base"
+  // fait partie de notre liste de référence.
+  const relevantClasses = allConfiguredClasses.filter(eff => {
+      const base = splitClassLabel(eff.classe || '').base;
+      return expectedBases.includes(base);
+  });
+
+  if (!relevantClasses.length) {
+    console.warn("Aucune classe n'est configurée dans les effectifs pour ce couple cycle/spécialité.");
+    cycleTotalBloc.classList.add('hidden');
+    updateSummary();
+    return;
+  }
+
+  // À partir d'ici, le reste de la fonction travaille avec la bonne liste de classes (relevantClasses)
+  const classLabels = [...new Set(relevantClasses.map(e => e.classe || ''))].filter(Boolean).sort();
   const annee = getSchoolYear();
   const baselines = await getBaselinesCouple(cyc, spec);
-  let allowed = uniq(baselines.map(b => b.classe));
-  if (!allowed.length) allowed = uniq(await getPresetClassesCouple(cyc, spec));
   let collecte = null;
-  try{ collecte = await getJSON(`/api/collecte/form-ap?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}`); }catch(_){/* no previous */}
-  const byClass = new Map((collecte?.classes||[]).map(c => [String(c.classe||c.nom).trim(), c.disciplines || []]));
-  if (!allowed.length && byClass.size) allowed = [...byClass.keys()];
-allowed.forEach(base => {
-  // toutes les classes précédemment saisies dont la base = base
-  const previous = [...byClass.keys()].filter(k => canonical(k) === canonical(base));
-  if(previous.length){
-    previous.forEach(full => {
-      const rows = byClass.get(full) || [];
-      createClassBlockFromAPI(full, rows);
-    });
-  }else{
-    // aucune division précédente → on crée la (1)
-    const baseRows = baselines.filter(b => String(b.classe).trim() === String(base).trim());
-    const rows = baseRows.map(b => ({
-      discipline: b.discipline,
-      hD:+b.heuresDues||0, lp:+b.leconsPrevues||0, ldp:+b.leconsDigPrevues||0,
-      tp:+b.tpPrevus||0,   tdp:+b.tpDigPrevus||0,   effTot:+b.enseignantsPoste||0
+  try {
+    collecte = await getJSON(`/api/collecte/form-ap?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}`);
+  } catch(_) { /* Ignore */ }
+  
+  const previousDataByClass = new Map((collecte?.classes||[]).map(c => [String(c.classe||c.nom).trim(), c.disciplines || []]));
+
+  // 4. On construit les blocs de formulaire uniquement pour les classes pertinentes
+  classLabels.forEach(label => {
+    const { base } = splitClassLabel(label);
+    const baselineRows = baselines.filter(b => String(b.classe).trim() === base);
+    
+    let rows = baselineRows.map(b => ({
+      discipline: b.discipline, hD: +b.heuresDues||0, lp: +b.leconsPrevues||0, ldp: +b.leconsDigPrevues||0,
+      tp: +b.tpPrevus||0, tdp: +b.tpDigPrevus||0, effTot: +b.enseignantsPoste||0
     }));
-    createClassBlockFromAPI(makeClassLabel(base,1), rows);
-  }
-});
+
+    const previousDisciplines = previousDataByClass.get(label);
+    if (previousDisciplines) {
+        const prevDataMap = new Map(previousDisciplines.map(d => [d.nom, d]));
+        rows.forEach(row => {
+            const prev = prevDataMap.get(row.discipline);
+            if (prev) {
+                Object.assign(row, prev);
+                prevDataMap.delete(row.discipline);
+            }
+        });
+        for (const prev of prevDataMap.values()) rows.push(prev);
+    }
+    
+    createClassBlockFromAPI(label, rows);
+  });
+
   buildCycleTotalTable();
   applyEffectifCapsAndPrefill();
   updateSummary();
@@ -883,8 +1095,8 @@ function createClassBlockFromAPI(classe, rows){
   const wrap=document.createElement('section');
   wrap.className='bloc classeBloc';
   const sp = splitClassLabel(classe);
-wrap.dataset.classBase = sp.base;
-wrap.dataset.division  = String(sp.division||1);
+  wrap.dataset.classBase = sp.base;
+  wrap.dataset.division  = String(sp.division||1);
 
   wrap.innerHTML = `
   <header>
@@ -898,7 +1110,6 @@ wrap.dataset.division  = String(sp.division||1);
   </header>
   <input type="hidden" data-field="className" value="${classe}">
   <table>${tableHead()}<tbody></tbody></table>`;
-
 
   const tbody=wrap.querySelector('tbody');
   (rows||[]).forEach(r=>{
@@ -932,7 +1143,6 @@ function renumberDivision(block, base, div){
   if(h2) h2.textContent = label;
   const hidden = block.querySelector('input[data-field="className"]');
   if(hidden) hidden.value = label;
-  // bouton "supprimer" visible dès la division 2
   const del = block.querySelector('.js-remove-division');
   if(del) del.style.display = (div>1) ? '' : 'none';
 }
@@ -944,14 +1154,11 @@ function addDivisionFromBlock(block){
   const nextDiv = siblings.length + 1;
 
   const clone = block.cloneNode(true);
-  // vider toutes les valeurs "fait"
   clone.querySelectorAll('input[type=number]').forEach(i=> i.value='');
-  // retirer les lignes (sauf la première si tu préfères)
   clone.querySelectorAll('tbody tr:not(.totalRow)').forEach(tr=>{
     tr.querySelectorAll('input').forEach(inp=>{ if(!inp.readOnly) inp.value=''; });
   });
   cont.insertBefore(clone, block.nextSibling);
-  // rattacher les écouteurs de calcul
   clone.querySelectorAll('input[type=number]').forEach(i=> i.addEventListener('input', recalcAll));
   renumberDivision(clone, base, nextDiv);
   applyEffectifCapsAndPrefillFor(clone);
@@ -962,93 +1169,90 @@ function removeDivisionFromBlock(block){
   const base = block.dataset.classBase || canonical(block.querySelector('h2')?.textContent||'');
   const cont = block.parentElement;
   const all  = [...cont.querySelectorAll(`.classeBloc[data-class-base="${CSS.escape(base)}"]`)];
-  if(all.length<=1) return; // ne pas supprimer la (1)
+  if(all.length<=1) return; 
   block.remove();
-  // renuméroter 1..N
   [...cont.querySelectorAll(`.classeBloc[data-class-base="${CSS.escape(base)}"]`)]
     .forEach((b,i)=> renumberDivision(b, base, i+1));
   recalcAll();
 }
 
-// Délégation de clics
-document.addEventListener('click', (e)=>{
-  const addBtn = e.target.closest('.js-add-division');
-  if(addBtn){
-    const block = addBtn.closest('.classeBloc');
-    if(block) addDivisionFromBlock(block);
-  }
-  const delBtn = e.target.closest('.js-remove-division');
-  if(delBtn){
-    const block = delBtn.closest('.classeBloc');
-    if(block) removeDivisionFromBlock(block);
-  }
-});
-
 const pctTxt=(a,b)=> a>0 ? ((b/a)*100).toFixed(2)+' %' : '—';
 
 /* === recalculs (lignes + totaux classe) avec plafonds === */
+/* === recalculs (lignes + totaux classe) avec plafonds === */
+/* === recalculs (lignes + totaux classe) avec plafonds === */
 function recalcAll(){
+  // Calcule les pourcentages pour chaque ligne de discipline (inchangé)
   document.querySelectorAll('.classeBloc tbody tr:not(.totalRow)').forEach(tr=>{
     const v=i=> tr.querySelector(`.val${i}`)?.valueAsNumber||0;
     [[1,2,3],[4,5,6],[7,8,9],[10,11,12],[13,14,15],[16,17,18],[19,20,21]]
       .forEach(([a,b,p])=> tr.querySelector(`.pct${p}`).textContent=pctTxt(v(a),v(b)));
   });
 
+  // Calcule les totaux pour chaque bloc de classe/division (avec la correction)
   document.querySelectorAll('.classeBloc table').forEach(tbl=>{
     const bloc=tbl.closest('.classeBloc');
     const cls = bloc.querySelector('h2')?.textContent?.trim() || '';
-    const eff = getClassEffectifByName(cls);
+    
+    // On récupère l'effectif de la division, qui servira de PLAFOND
+    const eff = getDivisionEffectifByLabel(cls);
+
     const rows=[...tbl.tBodies[0].rows];
     const total=rows[rows.length-1];
     const data=rows.slice(0,-1);
     const sum=n => data.reduce((acc,tr)=> acc+(+tr.querySelector(`.val${n}`)?.value||0),0);
+    
+    // Les totaux pour les autres colonnes restent des sommes simples
     [[1,2,3],[4,5,6],[7,8,9],[10,11,12],[13,14,15],[19,20,21]].forEach(([a,b,p])=>{
       const A=sum(a), B=sum(b);
       total.querySelector(`.sum${a}`).innerHTML=`<strong>${A}</strong>`;
       total.querySelector(`.sum${b}`).innerHTML=`<strong>${B}</strong>`;
       total.querySelector(`.pct${p}`).innerHTML=`<strong>${pctTxt(A,B)}</strong>`;
     });
-    const compTot = sum(16);
-    const m10Tot  = Math.min(sum(17), compTot);
+
+    // --- CORRECTION FINALE SELON VOTRE LOGIQUE ---
+
+    // 1. On calcule la SOMME de la colonne "élèves ayant composé".
+    const sumComp = sum(16);
+
+    // 2. On prend le minimum entre cette somme et l'effectif total de la classe.
+    // C'est le "plafonnement" que vous avez demandé.
+    const compTot = (eff > 0) ? Math.min(sumComp, eff) : sumComp;
+
+    // 3. Le total des élèves ayant la moyenne est la somme de la colonne, plafonnée par le nouveau total.
+    const m10Tot = Math.min(sum(17), compTot);
+
+    // On met à jour le HTML avec les valeurs correctes
     total.querySelector('.sum16').innerHTML = `<strong>${compTot}</strong>`;
     total.querySelector('.sum17').innerHTML = `<strong>${m10Tot}</strong>`;
-    total.querySelector('.pct18').innerHTML = `<strong>${pctTxt(compTot,m10Tot)}</strong>`;
+    total.querySelector('.pct18').innerHTML = `<strong>${pctTxt(compTot, m10Tot)}</strong>`;
   });
+  
+  // Le calcul du total de cycle reste inchangé
   calcCycleTotal();
 }
 
-/* limiter “fait ≤ dû” + cap par effectif */
-document.addEventListener('input', e=>{
-  if(!(e.target.matches('input[type=number]') && e.target.closest('.classeBloc'))) return;
-  const bloc=e.target.closest('.classeBloc');
-  const cls = bloc.querySelector('h2')?.textContent?.trim() || '';
-  const eff = getClassEffectifByName(cls);
-  const row=e.target.closest('tr');
-  if(!row) return;
-  const inputs=[...row.querySelectorAll('input[type=number]')];
-  for(let i=0;i<inputs.length;i+=2){
-    const due=+inputs[i].value||0; const faitEl = inputs[i+1]; if(!faitEl) continue; if((+faitEl.value)>due) faitEl.value=due;
-  }
-  const comp=row.querySelector('.val16'); const m10 =row.querySelector('.val17');
-  if(eff>0 && comp && (+comp.value>eff)) comp.value=eff;
-  if(m10 && comp && (+m10.value>+comp.value)) m10.value=comp.value;
-  recalcAll();
-});
-
 function addLine(btn){
-  const bloc=btn.closest('.classeBloc');
-  const tbody=bloc.querySelector('tbody');
-  const total=tbody.querySelector('.totalRow');
-  const holder=document.createElement('tbody');
-  holder.innerHTML=lineHTML('Nouvelle discipline');
-  const tr=holder.firstElementChild;
-  tbody.insertBefore(tr,total);
-  tr.querySelectorAll('input').forEach(i=> i.addEventListener('input',recalcAll));
-  const cls = bloc.querySelector('h2')?.textContent?.trim() || '';
-  const eff = getClassEffectifByName(cls);
-  if (eff>0) tr.querySelector('.val16').value = eff;
+  const bloc  = btn.closest('.classeBloc');
+  const tbody = bloc.querySelector('tbody');
+  const total = tbody.querySelector('.totalRow');
+
+  const holder = document.createElement('tbody');
+  holder.innerHTML = lineHTML('Nouvelle discipline');
+  const tr = holder.firstElementChild;
+  tbody.insertBefore(tr, total);
+
+  tr.querySelectorAll('input').forEach(i=> i.addEventListener('input', recalcAll));
+
+  // ➜ effectif de la division (ex: "4ème Année DECO (2)"), pas de la base
+  const clsLabel = bloc.querySelector('h2')?.textContent?.trim() || '';
+  const effDiv   = getDivisionEffectifByLabel(clsLabel);
+  if (effDiv > 0) tr.querySelector('.val16').value = effDiv;
+
   recalcAll();
 }
+
+
 async function resetDefaults(btn){
   const bloc = btn.closest('.classeBloc');
   const label = bloc.querySelector('h2').textContent.trim();
@@ -1057,14 +1261,12 @@ async function resetDefaults(btn){
 
   let rows = [];
   try{
-    // 1) tenter depuis la dernière collecte (exact label)
     const data = await getJSON(`/api/collecte/form-ap?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}`);
     const cls = (data?.classes||[]).find(c=> String(c.classe).trim()===label);
     if(cls) rows = cls.disciplines||[];
   }catch(_){}
 
   if(!rows.length){
-    // 2) fallback: baselines de la classe "base"
     const bl = await getBaselinesCouple(cyc, spec);
     rows = bl.filter(b=> String(b.classe).trim()===base)
              .map(b=>({ discipline:b.discipline, hD:+b.heuresDues||0, lp:+b.leconsPrevues||0, ldp:+b.leconsDigPrevues||0,
@@ -1073,14 +1275,12 @@ async function resetDefaults(btn){
   if(!rows.length) return;
 
   const tbody=bloc.querySelector('tbody');
-  // purge & recharge
   [...tbody.querySelectorAll('tr:not(.totalRow)')].forEach(tr=> tr.remove());
   rows.forEach(r=>{
     const holder=document.createElement('tbody');
     holder.innerHTML = lineHTML(r.discipline||'');
     const tr = holder.firstElementChild;
     tbody.insertBefore(tr, tbody.querySelector('.totalRow'));
-    // poser les valeurs défaut (dû) et libérer les "fait"
     const setFixed = (i,val)=>{ const input = tr.querySelector(`.val${i}`); if(!input) return; input.value=+val||0; input.readOnly=true; input.classList.add('fixed'); };
     setFixed(1,r.hD); setFixed(4,r.lp); setFixed(7,r.ldp); setFixed(10,r.tp); setFixed(13,r.tdp); setFixed(19,r.effTot);
   });
@@ -1088,7 +1288,6 @@ async function resetDefaults(btn){
   applyEffectifCapsAndPrefillFor(bloc);
   recalcAll();
 }
-
 
 /***** Total / moyenne du cycle *****/
 function buildCycleTotalTable(){
@@ -1100,26 +1299,34 @@ function buildCycleTotalTable(){
   cycleTotalBloc.classList.remove('hidden');
 }
 function calcCycleTotal(){
-  const row=cycleTotalTable.querySelector('.cycleRow'); if(!row) return;
-  const totals = Array(22).fill(0); // 1..21
+  const row = cycleTotalTable.querySelector('.cycleRow');
+  if(!row) return;
+
+  const totals = Array(22).fill(0);
+
+  // ➜ on additionne les cellules de la "totalRow" de chaque bloc (division)
   document.querySelectorAll('.classeBloc table').forEach(tbl=>{
-    const bloc=tbl.closest('.classeBloc');
-    const cls = bloc.querySelector('h2')?.textContent?.trim() || '';
-    const eff = getClassEffectifByName(cls);
-    const rows=[...tbl.tBodies[0].rows];
-    const data=rows.slice(0,-1);
-    const sum=n => data.reduce((acc,tr)=> acc+(+tr.querySelector(`.val${n}`)?.value||0),0);
-    [1,2,4,5,7,8,10,11,13,14,19,20].forEach(n=> totals[n]+=sum(n));
-    totals[16] += sum(16);
-    totals[17] += Math.min(sum(17), sum(16));
+    const trow = tbl.tBodies[0].querySelector('.totalRow');
+    if(!trow) return;
+    const read = i => Number((trow.querySelector(`.sum${i}`)?.textContent||'').replace(/\s/g,''))||0;
+
+    // colonnes somme simples
+    [1,2,4,5,7,8,10,11,13,14,19,20].forEach(n => totals[n] += read(n));
+
+    // colonnes "Réussite" (déjà cappées au niveau du bloc)
+    totals[16] += read(16);   // Élèves ayant composé
+    totals[17] += read(17);   // Moy >= 10
   });
-  [[1,2,3],[4,5,6],[7,8,9],[10,11,12],[13,14,15],[16,17,18],[19,20,21]]
-    .forEach(([a,b,p])=>{
-      row.querySelector(`.sum${a}`).innerHTML=`<strong>${totals[a]}</strong>`;
-      row.querySelector(`.sum${b}`).innerHTML=`<strong>${totals[b]}</strong>`;
-      row.querySelector(`.pct${p}`).innerHTML=`<strong>${pctTxt(totals[a],totals[b])}</strong>`;
-    });
+
+  // maj des % de la ligne cycle
+  [[1,2,3],[4,5,6],[7,8,9],[10,11,12],[13,14,15],[16,17,18],[19,20,21]].forEach(([a,b,p])=>{
+    const pct = (d,n)=> d>0 ? ((n/d)*100).toFixed(2)+' %' : '—';
+    row.querySelector(`.sum${a}`).innerHTML = `<strong>${totals[a]}</strong>`;
+    row.querySelector(`.sum${b}`).innerHTML = `<strong>${totals[b]}</strong>`;
+    row.querySelector(`.pct${p}`).innerHTML = `<strong>${pct(totals[a], totals[b])}</strong>`;
+  });
 }
+
 
 /******************** EXPORT / SUBMIT ********************/
 function headerCSV(){
@@ -1145,10 +1352,10 @@ function exportCSV(){
   const cyc=cycleTotalTitre.textContent, row=cycleTotalTable.querySelector('.cycleRow');
   if(row){
     const t = i => {
-  const raw = row.querySelector(`.sum${i}`)?.textContent?.trim() ?? '';
-  const n = Number(raw.replace(/\s/g,''));
-  return Number.isFinite(n) ? n : 0;
-};
+      const raw = row.querySelector(`.sum${i}`)?.textContent?.trim() ?? '';
+      const n = Number(raw.replace(/\s/g,''));
+      return Number.isFinite(n) ? n : 0;
+    };
     const P=b=> row.querySelector(`.pct${b}`).textContent.replace('%','').trim();
     out.push([cyc,'', t(1),t(2),P(3), t(4),t(5),P(6), t(7),t(8),P(9), t(10),t(11),P(12), t(13),t(14),P(15), t(16),t(17),P(18), t(19),t(20),P(21)]);
   }
@@ -1162,7 +1369,6 @@ function exportCSV(){
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
 
-// ===== Nouvelle construction + envoi de la "carte scolaire" =====
 function buildCarteScolairePayload(){
   const evaluation = +document.getElementById('evaluation').value || null;
   const payload = {
@@ -1213,7 +1419,7 @@ async function soumettreCarteScolaire(){
   try{
     document.getElementById('btnSendCarteDirect').disabled = true;
     const res = await postFirstOk(
-      ['/api/carte/submit', '/api/inspecteur/carte-scolaire', '/api/carte'], // ordre de préférence
+      ['/api/carte/submit', '/api/inspecteur/carte-scolaire', '/api/carte'], 
       carte
     );
     if(typeof io!=='undefined' && window.socket){
@@ -1232,7 +1438,7 @@ function groupCollecteByBase(classList){
   const byBase = new Map();
   for(const c of classList){
     const base = splitClassLabel(c.nom).base;
-    if(!byBase.has(base)) byBase.set(base, new Map());          // discipline -> totaux
+    if(!byBase.has(base)) byBase.set(base, new Map());
     const dmap = byBase.get(base);
     for(const d of (c.disciplines||[])){
       const key = String(d.nom||d.discipline||'').trim();
@@ -1261,72 +1467,83 @@ function groupCollecteByBase(classList){
 }
 
 async function soumettre(){
-  if(sending) return;
-  const evalNum=+document.getElementById('evaluation').value;
-  if(!selCycle.value) return alert('Sélectionnez un cycle.');
-  if(!selSpec.value) return alert('Sélectionnez une spécialité.');
-  if(!evalNum) return alert('Sélectionnez une évaluation.');
-
-  const payload={
-    cycle:selCycle.value,
-    specialite:selSpec.value,
-    evaluation:evalNum,
-    etablissement:CONNECTED_USER.etab,
-    animateur:CONNECTED_USER.nom,
-    departement: CONNECTED_USER.departement,
-    classes:[]
-  };
-  document.querySelectorAll('.classeBloc').forEach(bloc=>{
-    const cls=bloc.querySelector('h2')?.textContent?.trim(); if(!cls) return;
-    const classe={ nom:cls, disciplines:[] };
-    bloc.querySelectorAll('tbody tr:not(.totalRow)').forEach(tr=>{
-      const val=i=> tr.querySelector(`.val${i}`)?.valueAsNumber||0;
-      const nom=tr.cells[0].textContent.trim(); if(!nom) return;
-      classe.disciplines.push({ nom,
-        hD:val(1), hF:val(2),
-        lp:val(4), lf:val(5),
-        ldp:val(7), ldf:val(8),
-        tp:val(10), tf:val(11),
-        tdp:val(13), tdf:val(14),
-        comp:val(16), m10:val(17),
-        effTot:val(19), effPos:val(20)
-      });
-    });
-    payload.classes.push(classe);
-  });
-  payload.classes = groupCollecteByBase(payload.classes);
-  if(SETTINGS_CACHE){
-    payload.effectifs = SETTINGS_CACHE.effectifs||[];
-    payload.staff = SETTINGS_CACHE.staff||[];
-    payload.annee = SETTINGS_CACHE.annee||getSchoolYear();
+  if(window.sending) return;
+  const evalNum = +document.getElementById('evaluation').value;
+  if(!selCycle.value || !selSpec.value || !evalNum) {
+    return alert('Veuillez sélectionner un cycle, une spécialité et une évaluation.');
   }
 
-  try{
-    sending=true; document.getElementById('btnSoumettre').disabled=true;
-    const r=await fetch('/collecte',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), credentials:'same-origin' });
-    const data=await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(data?.error||'Erreur serveur');
+  window.sending = true;
+  document.getElementById('btnSoumettre').disabled = true;
 
-    // Option: envoyer la carte scolaire au même moment
-    const doitEnvoyerCarte = document.getElementById('chkSendCarte')?.checked;
-    if(doitEnvoyerCarte){
-      try{ await soumettreCarteScolaire(); }catch(_){ /* déjà alerté */ }
+  const payload = {
+    cycle: selCycle.value,
+    specialite: selSpec.value,
+    evaluation: evalNum,
+    etablissement: CONNECTED_USER.etab,
+    animateur: CONNECTED_USER.nom,
+    departement: CONNECTED_USER.departement,
+    classes: [], // Ce tableau contiendra les données PAR DIVISION
+    effectifs: [],
+    staff: (SETTINGS_CACHE?.staff || []),
+    annee: (SETTINGS_CACHE?.annee || getSchoolYear())
+  };
+
+  const displayedClasses = new Set();
+  
+  // On collecte les données de chaque bloc/division affiché
+  document.querySelectorAll('.classeBloc').forEach(bloc => {
+    const cls = bloc.querySelector('h2')?.textContent?.trim();
+    if (!cls) return;
+    
+    displayedClasses.add(cls);
+    
+    const classeData = { nom: cls, disciplines: [] };
+    bloc.querySelectorAll('tbody tr:not(.totalRow)').forEach(tr => {
+      const val = i => tr.querySelector(`.val${i}`)?.valueAsNumber || 0;
+      const nom = tr.cells[0].textContent.trim();
+      if (!nom) return;
+      
+      classeData.disciplines.push({
+        nom, hD:val(1), hF:val(2), lp:val(4), lf:val(5), ldp:val(7), ldf:val(8),
+        tp:val(10), tf:val(11), tdp:val(13), tdf:val(14),
+        comp:val(16), m10:val(17), effTot:val(19), effPos:val(20)
+      });
+    });
+    payload.classes.push(classeData);
+  });
+
+  // On filtre les effectifs pour n'envoyer que ceux des divisions concernées
+  if(SETTINGS_CACHE && SETTINGS_CACHE.effectifs){
+    payload.effectifs = SETTINGS_CACHE.effectifs.filter(eff => displayedClasses.has(eff.classe));
+  }
+  
+  try {
+    // Ce payload détaillé est envoyé au serveur
+    const r = await fetch('/collecte', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), credentials:'same-origin' });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data?.error || 'Erreur serveur');
+
+    // Le reste de la logique ne change pas
+    if(document.getElementById('chkSendCarte')?.checked) {
+      await soumettreCarteScolaire();
     }
 
-    alert(data.message||'Fiche enregistrée');
-    location.href='/collecte/mes';
-  }catch(e){ alert('Erreur : '+e.message); }
-  finally{ sending=false; document.getElementById('btnSoumettre').disabled=false; }
-}
+    alert(data.message || 'Fiche enregistrée avec succès.');
+    location.href = '/collecte/mes';
 
-/******************** Uploader & Chat ********************/
+  } catch(e) {
+    alert('Erreur lors de la soumission : ' + e.message);
+  } finally {
+    window.sending = false;
+    document.getElementById('btnSoumettre').disabled = false;
+  }
+}
 /******************** Uploader & Chat ********************/
 const drop = document.getElementById('drop');
 const pick = document.getElementById('pick');
 const fileInput = document.getElementById('fileInput');
 const filesBox = document.getElementById('files');
-
-/* ---- File manager (inchangé) ---- */
 let FILES_CACHE = [];
 let FILES_FILTER = 'all';
 let FILES_QUERY = '';
@@ -1385,32 +1602,20 @@ function renderFiles(){
 
   list.forEach(f=>{
     const d = new Date(f.uploadedAt || Date.now());
-    const subBits = [
-      f.ext ? f.ext.toUpperCase() : '',
-      fmtSize(f.size),
-      isNaN(d.getTime()) ? '' : d.toLocaleDateString(),
-      f.uploader ? ('par ' + f.uploader) : ''
-    ].filter(Boolean);
-
+    const subBits = [ f.ext ? f.ext.toUpperCase() : '', fmtSize(f.size), isNaN(d.getTime()) ? '' : d.toLocaleDateString(), f.uploader ? ('par ' + f.uploader) : '' ].filter(Boolean);
     const card = document.createElement('div'); card.className='filecard';
     const icon = document.createElement('div'); icon.className='fileicon'; icon.textContent = iconOf(f.kind);
     const meta = document.createElement('div'); meta.className='filemeta';
-
     const nameDiv = document.createElement('div'); nameDiv.className='name';
     const a = document.createElement('a'); a.href=f.url; a.target="_blank"; a.rel="noopener noreferrer"; a.textContent = f.name||'document';
     nameDiv.appendChild(a);
-
     const sub = document.createElement('div'); sub.className='sub';
     subBits.forEach(bit=>{ const span=document.createElement('span'); span.textContent=String(bit); sub.appendChild(span); });
-
-    meta.appendChild(nameDiv);
-    meta.appendChild(sub);
-    card.appendChild(icon);
-    card.appendChild(meta);
+    meta.appendChild(nameDiv); meta.appendChild(sub);
+    card.appendChild(icon); card.appendChild(meta);
     filesBox.appendChild(card);
   });
 }
-
 function updateFileCounters(){
   const counters = {all:FILES_CACHE.length,pdf:0,image:0,sheet:0,doc:0,slide:0,archive:0,other:0};
   FILES_CACHE.forEach(f=> counters[f.kind] = (counters[f.kind]||0)+1);
@@ -1437,7 +1642,6 @@ async function handleFiles(fileList){
 async function refreshFiles(){
   try{ const r=await fetch('/fichiers/list',{credentials:'same-origin'}); if(!r.ok) return; const list=await r.json(); FILES_CACHE = (list||[]).map(normalizeFile); updateFileCounters(); renderFiles(); }catch(_) {}
 }
-refreshFiles();
 
 /* ====== CHAT (nouveau rendu & reply) ====== */
 const chatCard   = document.getElementById('chatCard');
@@ -1446,7 +1650,6 @@ const typingEl   = document.getElementById('typing');
 const chatTextEl = document.getElementById('chatText');
 const chatFormEl = document.getElementById('chatForm');
 const presenceEl = document.getElementById('presence');
-
 const replyBar   = document.getElementById('replyBar');
 const replyName  = document.getElementById('replyName');
 const replySnip  = document.getElementById('replySnippet');
@@ -1459,9 +1662,8 @@ function hideChat(reason){
 function esc(s){ return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])); }
 const hhmm = ts => new Date(ts||Date.now()).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 const dayKey = ts => { const d=new Date(ts||Date.now()); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); };
-
 let lastDayKey = '';
-let REPLY_TARGET = null; // {id, from, text}
+let REPLY_TARGET = null;
 
 function showReplyBar(target){
   REPLY_TARGET = target;
@@ -1485,8 +1687,6 @@ function jumpToMessage(id){
   el.classList.add('flash');
   setTimeout(()=> el.classList.remove('flash'), 1800);
 }
-
-/* Rendu d’un message (WhatsApp-like) */
 function addMsg(m){
   if(!msgsEl) return;
   const ts = m.ts || Date.now();
@@ -1495,65 +1695,41 @@ function addMsg(m){
     msgsEl.insertAdjacentHTML('beforeend', `<div class="w-day">${new Date(ts).toLocaleDateString()}</div>`);
     lastDayKey = k;
   }
-
   const me  = (m.from === CONNECTED_USER.nom);
   const ini = (m.from||'?').split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();
-
   const wrap = document.createElement('div');
   wrap.className = 'w-msg ' + (me ? 'mine' : 'theirs');
   wrap.dataset.mid = m.id || m._id || String(ts);
-
   const fromLine = `<div class="w-from">${esc(me ? 'Moi' : (m.from||'—'))}</div>`;
   const q = (m.replyTo && (m.replyTo.text || m.replyTo.from)) ? `
     <div class="w-quote" data-ref="${esc(m.replyTo.id||'')}" title="Afficher le message cité">
       <div class="q-name">${esc(m.replyTo.from || '—')}</div>
       <div class="q-text">${esc((m.replyTo.text||'').slice(0,160))}</div>
     </div>` : '';
-
-  wrap.innerHTML = `
-    ${me ? '' : `<div class="w-avatar-sm">${ini}</div>`}
-    <div class="w-bubble">
-      ${fromLine}
-      ${q}
-      <div class="w-text">${esc(m.text||'')}</div>
-      <div class="w-meta"><span class="w-time">${hhmm(ts)}</span>${me?'<span class="w-ticks">✓✓</span>':''}</div>
-    </div>`;
+  wrap.innerHTML = `${me ? '' : `<div class="w-avatar-sm">${ini}</div>`}<div class="w-bubble">${fromLine}${q}<div class="w-text">${esc(m.text||'')}</div><div class="w-meta"><span class="w-time">${hhmm(ts)}</span>${me?'<span class="w-ticks">✓✓</span>':''}</div></div>`;
   msgsEl.appendChild(wrap);
   msgsEl.scrollTop = msgsEl.scrollHeight;
 }
-
 /* === Socket.io === */
 let socket;
 try{
   socket = io({
     path: '/socket.io',
     transports: ['websocket','polling'],
-    auth: { user: {
-      nom: CONNECTED_USER.nom, etab: CONNECTED_USER.etab,
-      role: CONNECTED_USER.role, inspection: CONNECTED_USER.inspection
-    } }
+    auth: { user: { nom: CONNECTED_USER.nom, etab: CONNECTED_USER.etab, role: CONNECTED_USER.role, inspection: CONNECTED_USER.inspection } }
   });
   window.socket = socket;
 }catch(e){ hideChat(e); }
 
 if(!socket){ hideChat('io indisponible'); }
 else{
-  socket.on('connect', ()=>{
-    presenceEl && (presenceEl.textContent = 'Connectés : —');
-    socket.emit('chat:join', { inspection: CONNECTED_USER.inspection, etab: CONNECTED_USER.etab });
-  });
+  socket.on('connect', ()=>{ presenceEl && (presenceEl.textContent = 'Connectés : —'); socket.emit('chat:join', { inspection: CONNECTED_USER.inspection, etab: CONNECTED_USER.etab }); });
   socket.on('disconnect', (reason)=>{ presenceEl && (presenceEl.textContent = 'Hors ligne'); console.warn('[chat] disconnect:', reason); });
   socket.on('connect_error', (err)=>{ console.warn('[chat] connect_error:', err?.message||err); if(chatTextEl) chatTextEl.disabled = true; });
-
-  socket.on('chat:history', (list)=>{
-    msgsEl.innerHTML=''; lastDayKey='';
-    (Array.isArray(list)?list:[]).forEach(addMsg);
-  });
+  socket.on('chat:history', (list)=>{ msgsEl.innerHTML=''; lastDayKey=''; (Array.isArray(list)?list:[]).forEach(addMsg); });
   socket.on('chat:new', addMsg);
   socket.on('chat:error', e => alert(e?.error || e?.message || 'Erreur chat'));
   socket.on('presence:update', n => { presenceEl && (presenceEl.textContent = `Connectés : ${n}`); });
-
-  // indicateur “X écrit…”
   let typingClear;
   socket.on('chat:typing', payload=>{
     if(!typingEl) return;
@@ -1564,13 +1740,7 @@ else{
     clearTimeout(typingClear);
     if(isTyping) typingClear = setTimeout(()=> typingEl.textContent='', 1200);
   });
-
-  // rafraîchir l'historique si besoin
-  document.getElementById('chatRefresh')?.addEventListener('click', ()=>{
-    socket?.emit('chat:join', { inspection: CONNECTED_USER.inspection, etab: CONNECTED_USER.etab });
-  });
-
-  // “je tape…”
+  document.getElementById('chatRefresh')?.addEventListener('click', ()=>{ socket?.emit('chat:join', { inspection: CONNECTED_USER.inspection, etab: CONNECTED_USER.etab }); });
   if(chatTextEl){
     let typingTimer;
     chatTextEl.addEventListener('input', ()=>{
@@ -1580,68 +1750,44 @@ else{
     });
   }
 }
-
-/* === Clicks sur messages : armer la réponse / ouvrir la citation === */
 msgsEl?.addEventListener('click', (e)=>{
   const msg = e.target.closest('.w-msg');
   if(!msg) return;
   const quote = e.target.closest('.w-quote');
   if(quote && quote.dataset.ref){ jumpToMessage(quote.dataset.ref); return; }
-
   const id   = msg.dataset.mid || '';
   const from = msg.querySelector('.w-from')?.textContent?.replace(/^Moi$/,'Vous') || '—';
   const text = msg.querySelector('.w-text')?.textContent || '';
   showReplyBar({ id, from, text });
   chatTextEl?.focus();
 });
-
-/* === Envoi : inclure replyTo si présent (Entrée pour envoyer) === */
-chatTextEl?.addEventListener('keydown', (e)=>{
-  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); chatFormEl?.requestSubmit(); }
-});
+chatTextEl?.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); chatFormEl?.requestSubmit(); }});
 chatFormEl?.addEventListener('submit', e=>{
   e.preventDefault();
   const text = (chatTextEl?.value||'').trim();
   if(!text) return;
   const payload = { text, ts: Date.now() };
-  if(REPLY_TARGET){
-    payload.replyTo = {
-      id  : REPLY_TARGET.id || '',
-      from: REPLY_TARGET.from || '',
-      text: REPLY_TARGET.text || ''
-    };
-  }
+  if(REPLY_TARGET){ payload.replyTo = { id: REPLY_TARGET.id||'', from: REPLY_TARGET.from||'', text: REPLY_TARGET.text||'' }; }
   socket?.emit('chat:send', payload);
   chatTextEl.value='';
   hideReplyBar();
 });
-
-/* petits plus input */
-document.getElementById('emojiBtn')?.addEventListener('click', ()=>{
-  chatTextEl.value += (chatTextEl.value ? ' ' : '') + '🙂';
-  chatTextEl.focus();
-});
-document.getElementById('attachBtn')?.addEventListener('click', ()=>{
-  document.getElementById('chatFile')?.click();
-});
-
-/* si le serveur notifie des changements de fichiers */
+document.getElementById('emojiBtn')?.addEventListener('click', ()=>{ chatTextEl.value += (chatTextEl.value ? ' ' : '') + '🙂'; chatTextEl.focus(); });
+document.getElementById('attachBtn')?.addEventListener('click', ()=>{ document.getElementById('chatFile')?.click(); });
 if(socket) socket.on('files:changed', ()=> { try{ refreshFiles(); }catch(_){} });
-
 
 /******************** PARAMÈTRES (modale) ********************/
 const modal    = document.getElementById('settingsModal');
 const btnOpen  = document.getElementById('btnOpenSettings');
-const btnClose = document.getElementById('btnCloseSettings'); // était manquant
-const btnClose2= document.getElementById('btnClose2');        // était manquant
+const btnCloseSettings = document.getElementById('btnCloseSettings');
+const btnClose2= document.getElementById('btnClose2');
 const btnSaveAll = document.getElementById('btnSaveAll');
 
-if (btnOpen)   btnOpen.addEventListener('click', (e)=>{ e.preventDefault(); openSettings(); });
-if (btnClose)  btnClose.addEventListener('click', ()=> closeModal(modal));
-if (btnClose2) btnClose2.addEventListener('click', ()=> closeModal(modal));
-if (btnSaveAll)btnSaveAll.addEventListener('click', saveAllAndClose);
+btnOpen?.addEventListener('click', (e)=>{ e.preventDefault(); openSettings(); });
+btnCloseSettings?.addEventListener('click', ()=> closeModal(modal));
+btnClose2?.addEventListener('click', ()=> closeModal(modal));
+btnSaveAll?.addEventListener('click', saveAllAndClose);
 
-/* --- Colonne gauche (effectifs / staff) --- */
 const yearInput = document.getElementById('yearInput');
 const effTbody = document.getElementById('effTbody');
 const staffTbody= document.getElementById('staffTbody');
@@ -1651,10 +1797,9 @@ document.getElementById('btnLoadClassesFromPreset').addEventListener('click', lo
 document.getElementById('btnExportStaff').addEventListener('click', exportStaffCSV);
 document.getElementById('btnPrintStaff').addEventListener('click', printStaff);
 
-/* --- Colonne droite (baselines) --- */
 const bCycle = document.getElementById('bCycle');
 const bSpec = document.getElementById('bSpec');
-const baselineClassList = document.getElementById('classList'); /* renommé */
+const baselineClassList = document.getElementById('classList');
 const currentClassChip = document.getElementById('currentClassChip');
 const bTbody = document.getElementById('bTbody');
 document.getElementById('btnLoadBaselines').addEventListener('click', ()=> loadBaselines(false));
@@ -1665,12 +1810,9 @@ document.getElementById('btnAddClass').addEventListener('click', ()=> addBaselin
 document.getElementById('btnRenameClass').addEventListener('click', renameBaselineClass);
 document.getElementById('btnDeleteClass').addEventListener('click', deleteBaselineClass);
 document.getElementById('btnSyncClasses').addEventListener('click', syncClassesFromEffectifs);
-
-/* --- Explorateur personnel (boutons d'accès) --- */
 document.getElementById('btnOpenStaffExplorer')?.addEventListener('click', ()=> openStaffExplorer());
 document.getElementById('btnOpenStaffExplorer2')?.addEventListener('click', ()=> openStaffExplorer());
 
-/* --- Etat local des baselines --- */
 const BSTATE = new Map();
 let CURRENT_CLASS = '';
 let CURRENT_ALLOWED_CLASSES = [];
@@ -1679,17 +1821,12 @@ function ensureBaselineForBase(labelOrBase){
   const sl  = splitClassLabel(labelOrBase);
   const key = makeClassLabel(sl.base, sl.division || 1);
   if (!key) return;
-
   const kBase = sl.base;
   const k1    = makeClassLabel(sl.base, 1);
-
-  // Migrer "base" -> "(1)" si nécessaire
   if (sl.division === 1 && BSTATE.has(kBase) && !BSTATE.has(k1)) {
     BSTATE.set(k1, (BSTATE.get(kBase) || []).map(x => ({...x})));
     BSTATE.delete(kBase);
   }
-
-  // Créer en clonant depuis "(1)" ou "base"
   if (!BSTATE.has(key)) {
     const proto = BSTATE.get(k1) || BSTATE.get(kBase) || [];
     BSTATE.set(key, proto.map(x => ({...x})));
@@ -1698,34 +1835,20 @@ function ensureBaselineForBase(labelOrBase){
     renderDiscTable();
   }
 }
-
-
 function autoSyncBaselinesFromEffectifs(){
   if(!effTbody) return;
-
-  // Toutes les divisions visibles à gauche, ex: "1ère Année DECO (1)", "(2)", … 
-  const labels = [...effTbody.querySelectorAll('tr')]
-    .map(labelFromEffRow)
-    .filter(Boolean);
-
+  const labels = [...effTbody.querySelectorAll('tr')].map(labelFromEffRow).filter(Boolean);
   const unique = [...new Set(labels)];
   const bases  = new Set(unique.map(l => splitClassLabel(l).base));
-
   let changed = false;
-
-  // 1) Migrer "base" -> "(1)" si l’on a désormais des divisions
   for (const base of bases) {
     const k1 = makeClassLabel(base, 1);
     if (BSTATE.has(base)) {
-      if (!BSTATE.has(k1)) {
-        BSTATE.set(k1, (BSTATE.get(base) || []).map(x => ({...x})));
-      }
+      if (!BSTATE.has(k1)) BSTATE.set(k1, (BSTATE.get(base) || []).map(x => ({...x})));
       BSTATE.delete(base);
       changed = true;
     }
   }
-
-  // 2) Garantir une baseline pour chaque division (clone depuis "(1)" si possible)
   unique.forEach(l => {
     if (!BSTATE.has(l)) {
       const { base } = splitClassLabel(l);
@@ -1734,78 +1857,41 @@ function autoSyncBaselinesFromEffectifs(){
       changed = true;
     }
   });
-
-  // 3) Nettoyer les orphelines (non visibles à gauche)
   for (const k of [...BSTATE.keys()]) {
-    if (!unique.includes(k)) {
-      BSTATE.delete(k);
-      changed = true;
-    }
+    if (!unique.includes(k)) { BSTATE.delete(k); changed = true; }
   }
-
-  // 4) Sélection par défaut
-  if (!CURRENT_CLASS && unique.length) {
-    CURRENT_CLASS = unique[0];
-    changed = true;
-  }
-
-  if (changed) {
-    renderClassList();
-    renderDiscTable();
-  }
+  if (!CURRENT_CLASS && unique.length) { CURRENT_CLASS = unique[0]; changed = true; }
+  if (changed) { renderClassList(); renderDiscTable(); }
 }
-
 
 function mapBaselineRow(r){
-  return {
-    discipline: r.discipline || '',
-    heuresDues: +r.heuresDues || 0,
-    leconsPrevues: +r.leconsPrevues || 0,
-    leconsDigPrevues: +r.leconsDigPrevues || 0,
-    tpPrevus: +r.tpPrevus || 0,
-    tpDigPrevus: +r.tpDigPrevus || 0,
-    enseignantsPoste: +r.enseignantsPoste || 0
-  };
+  return { discipline: r.discipline || '', heuresDues: +r.heuresDues || 0, leconsPrevues: +r.leconsPrevues || 0, leconsDigPrevues: +r.leconsDigPrevues || 0, tpPrevus: +r.tpPrevus || 0, tpDigPrevus: +r.tpDigPrevus || 0, enseignantsPoste: +r.enseignantsPoste || 0 };
 }
-
 async function loadRowsFromSources(base){
   const cyc  = bCycle.value || selCycle.value;
   const spec = bSpec.value  || selSpec.value;
   const annee = (yearInput?.value || '').trim() || getSchoolYear();
   if(!cyc || !spec) return [];
-
-  // 1) baselines enregistrées
   try{
     const r = await getJSON(`/api/settings/baselines?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}`);
     const list = (r||[]).filter(x => String(x.classe||'').trim() === base);
     if(list.length) return list.map(mapBaselineRow);
   }catch(_){}
-
-  // 2) defaults
   try{
     const r = await getJSON(`/api/settings/baselines/defaults?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}`);
     const list = (r||[]).filter(x => String(x.classe||'').trim() === base);
     if(list.length) return list.map(mapBaselineRow);
   }catch(_){}
-
-  // 3) référentiel → tout à 0
   try{
     const ref = await getJSON(`/api/disciplines?inspection=${encodeURIComponent(CONNECTED_USER.inspection)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}&actif=true`);
     const expected = [...new Set(ref.map(r => String(r.nom||'').trim()).filter(Boolean))];
-    if(expected.length){
-      return expected.map(n => ({
-        discipline:n, heuresDues:0, leconsPrevues:0, leconsDigPrevues:0,
-        tpPrevus:0, tpDigPrevus:0, enseignantsPoste:0
-      }));
-    }
+    if(expected.length) return expected.map(n => ({ discipline:n, heuresDues:0, leconsPrevues:0, leconsDigPrevues:0, tpPrevus:0, tpDigPrevus:0, enseignantsPoste:0 }));
   }catch(_){}
   return [];
 }
-
 async function ensureRowsFor(classLabel){
   const cur = BSTATE.get(classLabel) || [];
   if(cur.length) return;
-
   const { base, division } = splitClassLabel(classLabel);
   if(division > 1){
     const proto = BSTATE.get(makeClassLabel(base,1));
@@ -1814,30 +1900,24 @@ async function ensureRowsFor(classLabel){
   const rows = await loadRowsFromSources(base);
   BSTATE.set(classLabel, rows);
 }
-
-
-
 function renderClassList(){
   baselineClassList.innerHTML = '';
   const classes = [...BSTATE.keys()].sort((a,b)=> a.localeCompare(b));
-
   classes.forEach(name=>{
     const div = document.createElement('div');
     div.className = 'classItem' + (name===CURRENT_CLASS ? ' active' : '');
     div.textContent = name || '—';
     div.addEventListener('click', async ()=>{
       CURRENT_CLASS = name;
-      renderClassList();                  // met à jour l’item actif
-      await ensureRowsFor(CURRENT_CLASS); // ⬅️ charge les lignes si vide
-      renderDiscTable();                  // puis affiche dans le tableau de droite
+      renderClassList();
+      await ensureRowsFor(CURRENT_CLASS);
+      renderDiscTable();
     });
     baselineClassList.appendChild(div);
   });
-
   if(!CURRENT_CLASS && classes.length){ CURRENT_CLASS = classes[0]; }
   currentClassChip.textContent = CURRENT_CLASS || '—';
 }
-
 function renderDiscTable(){
   const rows = BSTATE.get(CURRENT_CLASS)||[];
   bTbody.innerHTML='';
@@ -1846,17 +1926,7 @@ function renderDiscTable(){
   attachRowEvents();
 }
 function discRowHTML(r,idx){
-  return `
-  <tr data-idx="${idx}">
-    <td><input type="text" value="${r.discipline||''}"></td>
-    <td><input type="number" min="0" value="${+r.heuresDues||0}"></td>
-    <td><input type="number" min="0" value="${+r.leconsPrevues||0}"></td>
-    <td><input type="number" min="0" value="${+r.leconsDigPrevues||0}"></td>
-    <td><input type="number" min="0" value="${+r.tpPrevus||0}"></td>
-    <td><input type="number" min="0" value="${+r.tpDigPrevus||0}"></td>
-    <td><input type="number" min="0" value="${+r.enseignantsPoste||0}"></td>
-    <td><button class="btn">🗑</button></td>
-  </tr>`;
+  return `<tr data-idx="${idx}"><td><input type="text" value="${r.discipline||''}"></td><td><input type="number" min="0" value="${+r.heuresDues||0}"></td><td><input type="number" min="0" value="${+r.leconsPrevues||0}"></td><td><input type="number" min="0" value="${+r.leconsDigPrevues||0}"></td><td><input type="number" min="0" value="${+r.tpPrevus||0}"></td><td><input type="number" min="0" value="${+r.tpDigPrevus||0}"></td><td><input type="number" min="0" value="${+r.enseignantsPoste||0}"></td><td><button class="btn">🗑</button></td></tr>`;
 }
 function attachRowEvents(){
   bTbody.querySelectorAll('tr').forEach(tr=>{
@@ -1878,27 +1948,17 @@ async function importExpectedToCurrent(){
     const rows = await getJSON(`/api/disciplines?inspection=${encodeURIComponent(CONNECTED_USER.inspection)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}&actif=true`);
     const expected = [...new Set(rows.map(r=>r.nom))];
     const cur = new Set((BSTATE.get(CURRENT_CLASS)||[]).map(r=> (r.discipline||'').trim().toLowerCase()));
-    expected.filter(n=>!cur.has(n.trim().toLowerCase()))
-      .forEach(n=> addDiscRowToCurrent({discipline:n,heuresDues:0,leconsPrevues:0,leconsDigPrevues:0,tpPrevus:0,tpDigPrevus:0,enseignantsPoste:0}));
+    expected.filter(n=>!cur.has(n.trim().toLowerCase())).forEach(n=> addDiscRowToCurrent({discipline:n,heuresDues:0,leconsPrevues:0,leconsDigPrevues:0,tpPrevus:0,tpDigPrevus:0,enseignantsPoste:0}));
   }catch(_){ alert('Impossible de charger le référentiel.'); }
 }
 function syncClassesFromEffectifs(){
-  const classes = [...effTbody.querySelectorAll('tr')]
-    .map(labelFromEffRow)
-    .filter(Boolean);
-
+  const classes = [...effTbody.querySelectorAll('tr')].map(labelFromEffRow).filter(Boolean);
   if(!classes.length) return alert('Aucune classe dans les effectifs.');
-
-  // nettoyer
   for(const k of [...BSTATE.keys()]) if(!classes.includes(k)) BSTATE.delete(k);
-  // compléter
   classes.forEach(c => { if(!BSTATE.has(c)) BSTATE.set(c, []); });
-
   if(!CURRENT_CLASS) CURRENT_CLASS = classes[0];
   renderClassList(); renderDiscTable();
 }
-
-
 async function fillSpecsForCycle(cycle){
   bSpec.innerHTML = '<option value="">—</option>';
   if(!cycle) return;
@@ -1908,10 +1968,6 @@ async function fillSpecsForCycle(cycle){
     specs.forEach(s=> bSpec.insertAdjacentHTML('beforeend', `<option value="${s}">${s}</option>`));
   }catch(_){/* ignore */}
 }
-
-bCycle.addEventListener('change', async ()=>{ await fillSpecsForCycle(bCycle.value); BSTATE.clear(); CURRENT_CLASS=''; renderClassList(); renderDiscTable(); await autoLoadBaselines(); await refreshEffectifsForSelection(); });
-bSpec.addEventListener('change', async ()=>{ BSTATE.clear(); CURRENT_CLASS=''; renderClassList(); renderDiscTable(); await autoLoadBaselines(); await refreshEffectifsForSelection(); });
-
 async function loadBaselines(forceDefaults){
   const annee=(yearInput.value||'').trim()||getSchoolYear();
   const cyc = bCycle.value || selCycle.value;
@@ -1936,46 +1992,30 @@ async function autoLoadBaselines(){ if((bCycle.value||'') && (bSpec.value||'')) 
 function collectBaselinesList(){
   const out=[]; for (const [classe, list] of BSTATE.entries()){ (list||[]).forEach(r=>{ if(!classe || !String(r.discipline||'').trim()) return; out.push({ classe, discipline: r.discipline, heuresDues:+r.heuresDues||0, leconsPrevues:+r.leconsPrevues||0, leconsDigPrevues:+r.leconsDigPrevues||0, tpPrevus:+r.tpPrevus||0, tpDigPrevus:+r.tpDigPrevus||0, enseignantsPoste:+r.enseignantsPoste||0 }); }); } return out;
 }
-
-/* === Effectifs/Staff helpers — champs lisibles === */
 function normalizeBase(s){ return splitClassLabel(String(s||'').trim()).base; }
-function rowsForBase(base){
-  base = normalizeBase(base);
-  return [...effTbody.querySelectorAll('tr')]
-    .filter(tr => normalizeBase(tr.querySelector('td input')?.value||'') === base);
-}
-
+function rowsForBase(base){ base = normalizeBase(base); return [...effTbody.querySelectorAll('tr')].filter(tr => normalizeBase(tr.querySelector('td input')?.value||'') === base); }
 function labelFromEffRow(tr){
   const base = normalizeBase(tr.querySelector('td input')?.value || '');
   const div  = Math.max(1, +tr.querySelector('.inp-div')?.value || 1);
-  return makeClassLabel(base, div);           // ex: "1ère année DECO (2)"
+  return makeClassLabel(base, div);
 }
-
 function nextDivisionIndexForBase(base){
   const rows = rowsForBase(base);
   const max = rows.reduce((m,tr)=> Math.max(m, +tr.querySelector('.inp-div')?.value||0), 0);
   return (max||0) + 1;
 }
-function renumberBaseGroup(base){
-  rowsForBase(base).forEach((tr,i)=>{
-    const divInp = tr.querySelector('.inp-div');
-    if(divInp) divInp.value = i+1;
-  });
-}
-/* === Ajuster le nombre de lignes (Div.) pour une classe (base) === */
+function renumberBaseGroup(base){ rowsForBase(base).forEach((tr,i)=>{ const divInp = tr.querySelector('.inp-div'); if(divInp) divInp.value = i+1; }); }
 function setDivisionCountForBase(base, nWanted){
   base = normalizeBase(base);
   nWanted = Math.max(1, +nWanted||1);
   let rows = rowsForBase(base);
-
   if(rows.length < nWanted){
-  for(let i=rows.length; i<nWanted; i++){
-    const last = rows[rows.length-1] || null;
-    const newTr = addEffRow({ classe: base, divisionIndex: i+1, filles:0, garcons:0 });
-    if(last) effTbody.insertBefore(newTr, last.nextSibling);
-    rows = rowsForBase(base);
-  }
-
+    for(let i=rows.length; i<nWanted; i++){
+      const last = rows[rows.length-1] || null;
+      const newTr = addEffRow({ classe: base, divisionIndex: i+1, filles:0, garcons:0 });
+      if(last) effTbody.insertBefore(newTr, last.nextSibling);
+      rows = rowsForBase(base);
+    }
   }else if(rows.length > nWanted){
     rows.slice(nWanted).forEach(tr => tr.remove());
   }
@@ -1983,138 +2023,132 @@ function setDivisionCountForBase(base, nWanted){
   autoSyncBaselinesFromEffectifs();
   ensureBaselineForBase(makeClassLabel(base, 1));
 }
-
 function addEffRow(e){
   const base = normalizeBase(e.classe||'');
   const div  = Math.max(1, Number(e.divisionIndex||splitClassLabel(e.classe||'').division||1));
   const filles = +e.filles||0, garcons = +e.garcons||0;
-
   const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td><input type="text" placeholder="ex : 1ère année DECO" value="${base}"></td>
-    <td><input type="number" class="inp-div" min="1" value="${div}" style="width:70px"></td>
-    <td><input type="number" min="0" value="${filles}"></td>
-    <td><input type="number" min="0" value="${garcons}"></td>
-    <td style="display:flex;gap:6px;justify-content:center">
-      <button class="btn" type="button" title="Ajouter une division">➕</button>
-      <button class="btn" type="button" title="Supprimer">🗑</button>
-    </td>`;
-
+  tr.innerHTML = `<td><input type="text" placeholder="ex : 1ère année DECO" value="${base}"></td><td><input type="number" class="inp-div" min="1" value="${div}" style="width:70px"></td><td><input type="number" min="0" value="${filles}"></td><td><input type="number" min="0" value="${garcons}"></td><td style="display:flex;gap:6px;justify-content:center"><button class="btn" type="button" title="Ajouter une division">➕</button><button class="btn" type="button" title="Supprimer">🗑</button></td>`;
   const [inpBase, inpDiv] = tr.querySelectorAll('td input');
   const [btnAdd, btnDel]  = tr.querySelectorAll('button');
   let lastBase = base;
-
-  // ➕ ajouter automatiquement la division suivante
-btnAdd.addEventListener('click', ()=>{
-  const b = normalizeBase(inpBase.value);
-  const n = nextDivisionIndexForBase(b);
-  addEffRow({ classe: b, divisionIndex: n, filles:0, garcons:0 });
-  renumberBaseGroup(b);
-  autoSyncBaselinesFromEffectifs();
-});
-
-
-  // 🗑 supprimer la ligne & renuméroter le groupe
-  btnDel.addEventListener('click', ()=>{
-    const b = normalizeBase(inpBase.value);
-    tr.remove();
-    renumberBaseGroup(b);
-    autoSyncBaselinesFromEffectifs();
-  });
-
-  // Changement du libellé de classe → renuméroter anciens/nouveaux groupes
+  btnAdd.addEventListener('click', ()=>{ const b = normalizeBase(inpBase.value); const n = nextDivisionIndexForBase(b); addEffRow({ classe: b, divisionIndex: n, filles:0, garcons:0 }); renumberBaseGroup(b); autoSyncBaselinesFromEffectifs(); });
+  btnDel.addEventListener('click', ()=>{ const b = normalizeBase(inpBase.value); tr.remove(); renumberBaseGroup(b); autoSyncBaselinesFromEffectifs(); });
   inpBase.addEventListener('input', ()=>{
     const newBase = normalizeBase(inpBase.value);
-    inpBase.value = newBase; // enlève un éventuel "(n)"
+    inpBase.value = newBase;
     if(newBase !== lastBase){
-      renumberBaseGroup(lastBase);
-      renumberBaseGroup(newBase);
+      renumberBaseGroup(lastBase); renumberBaseGroup(newBase);
       lastBase = newBase;
       if((+inpDiv.value||0) < 1) inpDiv.value = nextDivisionIndexForBase(newBase);
     }
-    
      autoSyncBaselinesFromEffectifs();
   });
-     inpBase.addEventListener('blur', ()=> ensureBaselineForBase(inpBase.value));
-  // Saisie manuelle de “Div.” : on ajuste le NOMBRE de lignes du groupe
- inpDiv.addEventListener('input', ()=>{
-  let v = Math.max(1, +inpDiv.value || 1);
-  setDivisionCountForBase(normalizeBase(inpBase.value), v); // ✅ le bon appel
-});
-
-
+  inpBase.addEventListener('blur', ()=> ensureBaselineForBase(inpBase.value));
+  inpDiv.addEventListener('input', ()=>{ let v = Math.max(1, +inpDiv.value || 1); setDivisionCountForBase(normalizeBase(inpBase.value), v); });
   effTbody.appendChild(tr);
   ensureBaselineForBase(makeClassLabel(base, div));
-    return tr;
+  return tr;
 }
-
-
 function addStaffRow(s){
   const tr=document.createElement('tr');
-  tr.innerHTML = `
-    <td><input type="text" placeholder="Nom & prénom" value="${s.nom||''}"></td>
-    <td><input type="text" placeholder="ex : A3" value="${s.grade||''}"></td>
-    <td><input type="text" placeholder="ex : Histoire de l'art" value="${s.matiere||''}"></td>
-    <td><input type="text" placeholder="ex : Titulaire" value="${s.statut||''}"></td>
-    <td><textarea placeholder="Observation…">${s.obs||''}</textarea></td>
-    <td style="display:flex;gap:6px;justify-content:center">
-      <button class="btn" type="button" title="Fiche enseignant">📄</button>
-      <button class="btn" type="button" title="Supprimer">🗑</button>
-    </td>`;
+  tr.innerHTML = `<td><input type="text" placeholder="Nom & prénom" value="${s.nom||''}"></td><td><input type="text" placeholder="ex : A3" value="${s.grade||''}"></td><td><input type="text" placeholder="ex : Histoire de l'art" value="${s.matiere||''}"></td><td><input type="text" placeholder="ex : Titulaire" value="${s.statut||''}"></td><td><textarea placeholder="Observation…">${s.obs||''}</textarea></td><td style="display:flex;gap:6px;justify-content:center"><button class="btn" type="button" title="Fiche enseignant">📄</button><button class="btn" type="button" title="Supprimer">🗑</button></td>`;
   const [btnFiche, btnDel] = tr.querySelectorAll('button');
   btnDel.addEventListener('click', ()=> tr.remove());
-  btnFiche.addEventListener('click', ()=>{
-    const t=tr.querySelectorAll('td input, td textarea');
-    openStaffSheet({
-      nom:t[0].value.trim(), grade:t[1].value.trim(), matiere:t[2].value.trim(), statut:t[3].value.trim(), obs:t[4].value.trim(),
-      classes: Array.isArray(s.classes)? [...s.classes]:[], disciplines: Array.isArray(s.disciplines)? [...s.disciplines]:[]
-    }, updated=>{
-      t[0].value=updated.nom||''; t[1].value=updated.grade||''; t[2].value=updated.matiere||''; t[3].value=updated.statut||''; t[4].value=updated.obs||'';
-      if(SETTINGS_CACHE){
-        const staff = SETTINGS_CACHE.staff||[];
-        const idx = staff.findIndex(p=> (p.nom||'').trim().toLowerCase() === (updated.nom||'').trim().toLowerCase());
-        if(idx>=0) staff[idx] = {...staff[idx], ...updated};
-      }
-    });
+ btnFiche.addEventListener('click', () => {
+  const t = tr.querySelectorAll('td input, td textarea');
+  const nom = t[0].value.trim();
+  // Trouver l'enseignant complet dans SETTINGS_CACHE
+  const fullPerson = (SETTINGS_CACHE?.staff || []).find(p => (p.nom || '').trim().toLowerCase() === nom.toLowerCase());
+  // Si on trouve l'enseignant complet, on l'utilise, sinon on utilise les données de base
+  const personToSend = fullPerson || {
+    nom: t[0].value.trim(),
+    grade: t[1].value.trim(),
+    matiere: t[2].value.trim(),
+    statut: t[3].value.trim(),
+    obs: t[4].value.trim(),
+    classes: [],
+    disciplines: []
+  };
+  openStaffSheet(personToSend, updated => {
+    t[0].value = updated.nom || '';
+    t[1].value = updated.grade || '';
+    t[2].value = updated.matiere || '';
+    t[3].value = updated.statut || '';
+    t[4].value = updated.obs || '';
+    if (SETTINGS_CACHE) {
+      const staff = SETTINGS_CACHE.staff || [];
+      const idx = staff.findIndex(p => (p.nom || '').trim().toLowerCase() === (updated.nom || '').trim().toLowerCase());
+      if (idx >= 0) staff[idx] = { ...staff[idx], ...updated };
+    }
   });
+});
+
   staffTbody.appendChild(tr);
 }
-
 async function getDefaultClassesFor(cyc,spec){
   try{ const r = await getJSON(`/api/presets?inspection=${encodeURIComponent(CONNECTED_USER.inspection)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}`); return r?.classes||[]; }catch(_){ return []; }
 }
 async function refreshEffectifsForSelection(){
-  const cyc=bCycle.value||selCycle.value, spec=bSpec.value||selSpec.value;
-  if(!cyc || !spec) return;
-  let allowed = [...BSTATE.keys()];
-  if(!allowed.length) allowed = await getDefaultClassesFor(cyc, spec);
-  CURRENT_ALLOWED_CLASSES = allowed.slice();
+  const cyc = bCycle.value || selCycle.value;
+  const spec = bSpec.value || selSpec.value;
 
-  const allEff = SETTINGS_CACHE?.effectifs || [];
-  // Regrouper les lignes existantes par base
-  const byBase = new Map();
-  allEff.forEach(e=>{
-    const sl = splitClassLabel(e.classe||'');
-    const b  = normalizeBase(sl.base);
-    const div= sl.division||1;
-    if(!byBase.has(b)) byBase.set(b, []);
-    byBase.get(b).push({ divisionIndex: div, filles:+e.filles||0, garcons:+e.garcons||0 });
-  });
-
+  // On vide la table avant toute chose
   effTbody.innerHTML = '';
-  // Pour chaque classe autorisée : restituer les divisions existantes ou créer la (1)
-  allowed.forEach(base=>{
-    const rows = (byBase.get(normalizeBase(base)) || []).sort((a,b)=> a.divisionIndex - b.divisionIndex);
-    if(rows.length){
-      rows.forEach(r=> addEffRow({ classe: base, divisionIndex: r.divisionIndex, filles: r.filles, garcons: r.garcons }));
-      renumberBaseGroup(base);
-    }else{
-      addEffRow({ classe: base, divisionIndex: 1, filles:0, garcons:0 });
-    }
+
+  if (!cyc || !spec) {
+    // Si le couple cycle/spécialité n'est pas complet, on n'affiche rien.
+    autoSyncBaselinesFromEffectifs(); // On s'assure que la partie droite est aussi vide
+    return;
+  }
+
+  // 1. On récupère la liste des classes de base ATTENDUES pour ce couple.
+  // Cette liste sert de référence pour savoir quelles classes sont pertinentes.
+  const expectedBases = await getDefaultClassesFor(cyc, spec);
+  
+  // Cette variable est importante pour la logique de sauvegarde plus tard.
+  CURRENT_ALLOWED_CLASSES = [...expectedBases];
+
+  // 2. On récupère TOUS les effectifs déjà enregistrés dans le cache.
+  const allSavedEffectifs = SETTINGS_CACHE?.effectifs || [];
+
+  // 3. On filtre les effectifs enregistrés pour ne garder que ceux dont la "base"
+  // correspond aux classes attendues pour le cycle/spécialité sélectionné.
+  const relevantEffectifs = allSavedEffectifs.filter(e => {
+    const base = splitClassLabel(e.classe || '').base;
+    return expectedBases.includes(base);
   });
+
+  // 4. On décide quoi afficher dans la table des effectifs.
+  if (relevantEffectifs.length > 0) {
+    // CAS A : Il existe déjà des données sauvegardées pour ce couple.
+    // On affiche EXACTEMENT ces données pour permettre leur modification.
+    relevantEffectifs.forEach(eff => {
+      const { base, division } = splitClassLabel(eff.classe);
+      addEffRow({ 
+        classe: base, 
+        divisionIndex: division, 
+        filles: eff.filles, 
+        garcons: eff.garcons 
+      });
+    });
+    
+    // On s'assure que la numérotation des divisions est cohérente
+    expectedBases.forEach(base => renumberBaseGroup(base));
+
+  } else {
+    // CAS B : Aucune donnée n'a encore été enregistrée pour ce couple.
+    // On affiche la liste des classes par défaut, avec des effectifs à 0,
+    // pour que l'utilisateur puisse commencer la saisie.
+    expectedBases.forEach(base => {
+      addEffRow({ classe: base, divisionIndex: 1, filles: 0, garcons: 0 });
+    });
+  }
+
+  // 5. Pour finir, on synchronise la liste des "Classes (baselines)" à droite
+  // avec ce qui est maintenant affiché dans la table des effectifs.
   autoSyncBaselinesFromEffectifs();
 }
-
 async function loadClassesPreset(){
   const cyc = bCycle.value || selCycle.value;
   const spec = bSpec.value || selSpec.value;
@@ -2129,110 +2163,238 @@ async function loadClassesPreset(){
   }catch(_){ alert('Impossible de charger les classes par défaut.'); }
   autoSyncBaselinesFromEffectifs();
 }
-
-
 async function saveAllAndClose(){
   const annee = (yearInput.value||'').trim() || getSchoolYear();
-
-// Récupérer ce qui est affiché (par base × division)
-const displayed = [...effTbody.querySelectorAll('tr')].map(tr=>{
-  const t = tr.querySelectorAll('td input');
-  const base = normalizeBase(t[0].value.trim());
-  const div  = Math.max(1, +t[1].value||1);
-  const filles = +t[2].value||0;
-  const garcons= +t[3].value||0;
-  return { classe: makeClassLabel(base, div), filles, garcons };
-}).filter(x=> x.classe);
-
-// Conserver les autres lignes “hors couple” (bases non autorisées)
-const others = (SETTINGS_CACHE?.effectifs||[]).filter(e=>{
-  const b = normalizeBase(e.classe||'');
-  return !CURRENT_ALLOWED_CLASSES.map(normalizeBase).includes(b);
-});
-
+  const displayed = [...effTbody.querySelectorAll('tr')].map(tr=>{
+    const t = tr.querySelectorAll('td input');
+    const base = normalizeBase(t[0].value.trim());
+    const div  = Math.max(1, +t[1].value||1);
+    const filles = +t[2].value||0;
+    const garcons= +t[3].value||0;
+    return { classe: makeClassLabel(base, div), filles, garcons };
+  }).filter(x=> x.classe);
+  const others = (SETTINGS_CACHE?.effectifs||[]).filter(e=>{ const b = normalizeBase(e.classe||''); return !CURRENT_ALLOWED_CLASSES.map(normalizeBase).includes(b); });
   const effectifs=[...others, ...displayed];
-  const UIstaff=[...staffTbody.querySelectorAll('tr')].map(tr=>{
-    const t=tr.querySelectorAll('td input, td textarea'); const nom=t[0].value.trim();
-    const base={ nom, grade:t[1].value.trim(), matiere:t[2].value.trim(), statut:t[3].value.trim(), obs:t[4].value.trim() };
-    const enrich = (SETTINGS_CACHE?.staff||[]).find(p=> (p.nom||'').trim().toLowerCase()===(nom||'').toLowerCase());
-    return enrich ? {...base, classes:enrich.classes||[], disciplines:enrich.disciplines||[]} : base;
-  }).filter(x=>x.nom);
+  const UIstaff = [...staffTbody.querySelectorAll('tr')].map(tr => {
+  const t = tr.querySelectorAll('td input, td textarea');
+  const nom = t[0].value.trim();
+  // Récupérer les données de la fiche complète si disponible
+  const enrich = (SETTINGS_CACHE?.staff || []).find(p => (p.nom || '').trim().toLowerCase() === nom.toLowerCase());
+  const base = {
+    nom,
+    grade: t[1].value.trim(),
+    matiere: t[2].value.trim(),
+    statut: t[3].value.trim(),
+    obs: t[4].value.trim(),
+    classes: enrich?.classes || [],
+    disciplines: enrich?.disciplines || []
+  };
+  if (enrich) {
+    return {
+      ...base,
+      prenom: enrich.prenom || '',
+      matricule: enrich.matricule || '',
+      categorie: enrich.categorie || '',
+      sexe: enrich.sexe || '',
+      dateNaissance: enrich.dateNaissance || '',
+      telephone: enrich.telephone || '',
+      regionOrigine: enrich.regionOrigine || '',
+      departementOrigine: enrich.departementOrigine || '',
+      arrondissementOrigine: enrich.arrondissementOrigine || '',
+      posteOccupe: enrich.posteOccupe || '',
+      rangPoste: enrich.rangPoste || '',
+      dateEntreeFP: enrich.dateEntreeFP || '',
+      dateAffectation: enrich.dateAffectation || ''
+    };
+  }
+  return base;
+}).filter(x => x.nom);
+
   const cyc = bCycle.value || selCycle.value; const spec = bSpec.value || selSpec.value; const list = collectBaselinesList();
   try{
-        await postJSON('/api/settings', { annee, effectifs, staff: UIstaff });
-    if (cyc && spec) {
-      await postJSON('/api/settings/baselines', { annee, cycle: cyc, specialite: spec, list });
-    }
+    await postJSON('/api/settings', { annee, effectifs, staff: UIstaff });
+    if (cyc && spec) await postJSON('/api/settings/baselines', { annee, cycle: cyc, specialite: spec, list });
     SETTINGS_CACHE = { ...(SETTINGS_CACHE||{}), annee, effectifs, staff: UIstaff };
-
     await refreshSettingsSidebar();
     applyEffectifCapsAndPrefill();
     alert('Paramètres enregistrés.');
     closeModal(modal);
   }catch(e){ alert('Erreur: '+e.message); }
 }
-
-/* Ouvrir la modale & charger les données */
 async function openSettings(){
   openModal(modal);
   yearInput.value = getSchoolYear();
   effTbody.innerHTML=''; staffTbody.innerHTML='';
   BSTATE.clear(); CURRENT_CLASS=''; CURRENT_ALLOWED_CLASSES=[]; renderClassList(); renderDiscTable();
-
   bCycle.value = selCycle.value || '';
   await fillSpecsForCycle(bCycle.value);
   if (selSpec.value) bSpec.value = selSpec.value;
-
   try{
     const s = await getJSON(`/api/settings?annee=${encodeURIComponent(yearInput.value)}`);
     SETTINGS_CACHE = s || null;
     (SETTINGS_CACHE?.staff||[]).forEach(addStaffRow);
   }catch(_){ SETTINGS_CACHE=null; }
-
   await autoLoadBaselines();
   await refreshEffectifsForSelection();
 }
+/**
+ * Construit une carte maîtresse qui associe chaque classe de base à son cycle et sa spécialité.
+ * C'est la nouvelle source de vérité pour le classement des classes.
+ */
+async function buildMasterClassMap() {
+    const classMap = new Map();
+    const inspections = [CONNECTED_USER.inspection]; // Pourrait être étendu si nécessaire
+    const cycles = ['premier', 'second'];
 
-/******************** SIDEBAR (stats) ********************/
+    for (const cycle of cycles) {
+        try {
+            // On récupère toutes les disciplines pour un cycle donné
+            const disciplines = await getJSON(`/api/disciplines?inspection=${encodeURIComponent(inspections[0])}&cycle=${encodeURIComponent(cycle)}&actif=true`);
+            const specialites = [...new Set(disciplines.map(d => d.specialite))];
+
+            for (const spec of specialites) {
+                // Pour chaque spécialité, on charge les classes par défaut (presets)
+                const presets = await getDefaultClassesFor(cycle, spec);
+                presets.forEach(base => {
+                    if (!classMap.has(base)) {
+                        classMap.set(base, { cycle, specialite: spec });
+                    }
+                });
+            }
+        } catch (error) {
+            console.error(`Impossible de charger les presets pour le cycle ${cycle}:`, error);
+        }
+    }
+    return classMap;
+}
+
+/**
+ * Renvoie un poids numérique pour une classe afin de permettre un tri logique.
+ * Ex: 2nde (2) < 1ère (3) < Tle (4)
+ */
+/**
+ * Renvoie un poids numérique pour une classe afin de permettre un tri logique.
+ * NOUVELLE VERSION : Gère l'ordre 1ère -> 2nde -> 3ème -> 4ème -> Tle
+ */
+function getClassOrder(className) {
+    const name = String(className || '').toLowerCase();
+    
+    // On assigne des poids dans l'ordre de progression scolaire
+    if (name.includes('1ère') || name.includes('1er')) return 1;
+    if (name.includes('2nde') || name.includes('2ème')) return 2;
+    if (name.includes('3ème')) return 3;
+    if (name.includes('4ème')) return 4;
+    if (name.includes('tle') || name.includes('terminale')) return 5; // La Terminale vient après les années numérotées
+    
+    return 10; // Valeur par défaut pour les autres classes
+}
+
 async function refreshSettingsSidebar(){
   const y = getSchoolYear();
   yearStat.textContent = y;
 
-  try{
+  try {
     const r = await fetch(`/api/settings?annee=${encodeURIComponent(y)}`, {credentials:'same-origin'});
-    if(!r.ok){ throw new Error('no settings'); }
+    if(!r.ok) throw new Error('no settings');
     SETTINGS_CACHE = await r.json();
-  }catch(_){
+  } catch(_) {
     SETTINGS_CACHE = null;
   }
 
-  const eff   = SETTINGS_CACHE?.effectifs || [];
-  const staff = SETTINGS_CACHE?.staff     || [];
+  const eff = SETTINGS_CACHE?.effectifs || [];
+  const staff = SETTINGS_CACHE?.staff || [];
 
   const totEleves = eff.reduce((s,e)=> s + (+e.filles||0) + (+e.garcons||0), 0);
-  const nbClasses = new Set(eff.map(x=> splitClassLabel(x.classe||'').base)).size;
-  const nbEns     = staff.length;
+  const nbDivisions = eff.length; // On compte les divisions, pas les classes de base
+  const nbEns = staff.length;
+  effStaffStat.innerHTML = `${nbDivisions} classe(s)/division(s), ${totEleves} élève(s), ${nbEns} enseignant(s).`;
 
-  effStaffStat.innerHTML = `${nbClasses} classe(s), ${totEleves} élève(s), ${nbEns} enseignant(s).`;
-  // petit tableau récap
-  const grouped = {};
-  eff.forEach(e=>{
-    const base = splitClassLabel(e.classe||'').base;
-    grouped[base] = (grouped[base]||0) + (+e.filles||0) + (+e.garcons||0);
+  // --- LOGIQUE FINALE DE GROUPEMENT ET DE TRI ---
+
+  // 1. On construit la carte maîtresse pour l'association cycle/spécialité
+  const masterClassMap = await buildMasterClassMap();
+
+  // 2. On prépare la structure pour grouper les divisions
+  const groupedData = {};
+
+  eff.forEach(e => {
+    // On ignore les lignes sans nom de classe
+    if (!e.classe) return; 
+
+    const base = splitClassLabel(e.classe).base;
+    const classInfo = masterClassMap.get(base);
+    
+    // On crée un titre de groupe spécifique, ex: "Premier Cycle - DECO"
+    const groupTitle = classInfo 
+      ? `${classInfo.cycle.charAt(0).toUpperCase() + classInfo.cycle.slice(1)} Cycle - ${classInfo.specialite}`
+      : 'Cycle non défini';
+
+    if (!groupedData[groupTitle]) {
+      // La structure est maintenant un simple tableau pour stocker chaque division
+      groupedData[groupTitle] = []; 
+    }
+
+    const filles = +e.filles || 0;
+    const garcons = +e.garcons || 0;
+
+    // 3. LA CORRECTION CLÉ : ON AJOUTE CHAQUE DIVISION COMME UN OBJET UNIQUE
+    // On ne fusionne plus, on ajoute chaque ligne de la table des effectifs.
+    groupedData[groupTitle].push({
+        label: e.classe, // On garde le nom complet, ex: "2nde AF1 (2)"
+        filles: filles,
+        garcons: garcons,
+        total: filles + garcons
+    });
   });
-  const rows = Object.entries(grouped).sort((a,b)=>a[0].localeCompare(b[0]))
-    .map(([c,n])=>`<tr><td>${c}</td><td style="text-align:right">${n}</td></tr>`).join('');
-  effTableWrap.innerHTML = `<table class="tbl-mini" style="table-layout:fixed"><colgroup><col><col style="width:90px"></colgroup><thead><tr><th>Classe</th><th>Total</th></tr></thead><tbody>${rows||'<tr><td colspan="2" class="subtle">—</td></tr>'}</tbody></table>`;
+
+  // 4. On construit le HTML final, en triant correctement
+  let tableHTML = '';
+  const sortedGroupTitles = Object.keys(groupedData).sort();
+
+  for (const title of sortedGroupTitles) {
+    const classesInGroup = groupedData[title];
+    if (classesInGroup.length === 0) continue;
+    
+    tableHTML += `<tbody><tr><td colspan="4" style="background:#f0f4ff;font-weight:700;">${title}</td></tr></tbody>`;
+    
+    // On trie les divisions DANS le groupe en utilisant notre fonction de tri corrigée
+    const classRows = classesInGroup
+        .sort((a, b) => getClassOrder(a.label) - getClassOrder(b.label))
+        .map(divisionData => `
+            <tr>
+                <td style="text-align:left">${divisionData.label}</td>
+                <td style="text-align:right">${divisionData.filles}</td>
+                <td style="text-align:right">${divisionData.garcons}</td>
+                <td style="text-align:right"><strong>${divisionData.total}</strong></td>
+            </tr>
+        `).join('');
+    
+    tableHTML += `<tbody>${classRows}</tbody>`;
+  }
+
+  // On injecte le HTML final dans le conteneur
+  effTableWrap.innerHTML = `
+    <table class="tbl-mini" style="table-layout:auto;">
+      <thead>
+        <tr>
+          <th style="text-align:left">Classe</th>
+          <th style="text-align:right">Filles</th>
+          <th style="text-align:right">Garçons</th>
+          <th style="text-align:right">Total</th>
+        </tr>
+      </thead>
+      ${tableHTML || '<tbody><tr><td colspan="4" class="subtle">—</td></tr></tbody>'}
+    </table>`;
+    
   effStaffDetails.classList.remove('hidden');
 }
 
-/******************** CHARGEMENT DYNAMIQUE (collecte) ********************/
+/******************** CHARGEMENT DYNAMIQUE (collecte) & listeners ********************/
 selCycle.addEventListener('change', async ()=>{
   formulaires.innerHTML='';
   cycleTotalBloc.classList.add('hidden');
   contEval.classList.add('hidden');
   selSpec.innerHTML='<option value="">-- Choisir --</option>';
-
   const cyc = selCycle.value;
   if(!cyc){ contSpec.classList.add('hidden'); updateSummary(); return; }
   try{
@@ -2251,105 +2413,152 @@ selSpec.addEventListener('change', async ()=>{
   contEval.classList.remove('hidden');
   await buildCollecteFor(cyc, spec);
   await refreshEffectifsForSelection();
+  updateSummary();
 });
 
 document.getElementById('evaluation').addEventListener('change', updateSummary);
+document.addEventListener('click', (e)=>{
+  const addBtn = e.target.closest('.js-add-division');
+  if(addBtn){ const block = addBtn.closest('.classeBloc'); if(block) addDivisionFromBlock(block); }
+  const delBtn = e.target.closest('.js-remove-division');
+  if(delBtn){ const block = delBtn.closest('.classeBloc'); if(block) removeDivisionFromBlock(block); }
+});
+document.addEventListener('input', e => {
+  // On ne s'intéresse qu'aux changements dans les champs numériques des formulaires de classe
+  if (!(e.target.matches('input[type=number]') && e.target.closest('.classeBloc'))) return;
+  
+  const row = e.target.closest('tr');
+  if (!row) return;
+
+  const bloc = e.target.closest('.classeBloc');
+  const cls = bloc.querySelector('h2')?.textContent?.trim() || '';
+  const eff = getDivisionEffectifByLabel(cls); // Effectif de la division, pour le plafond
+
+  // --- VALIDATION N°1 : FAIT <= DÛ ---
+  // On définit les paires de colonnes à valider
+  const validationPairs = [
+      ['.val1', '.val2'],   // Heures dues / faites
+      ['.val4', '.val5'],   // Leçons prévues / faites
+      ['.val7', '.val8'],   // Leçons digitalisées prévues / faites
+      ['.val10', '.val11'], // TP prévus / faits
+      ['.val13', '.val14'], // TP digitalisés prévus / faits
+      ['.val19', '.val20']  // Effectif enseignants / En poste
+  ];
+
+  validationPairs.forEach(([dueSelector, faitSelector]) => {
+      const dueEl = row.querySelector(dueSelector);
+      const faitEl = row.querySelector(faitSelector);
+      if (dueEl && faitEl) {
+          const dueValue = +dueEl.value || 0;
+          if (+faitEl.value > dueValue) {
+              faitEl.value = dueValue; // On corrige automatiquement
+          }
+      }
+  });
+
+  // --- VALIDATION N°2 : GESTION DE LA RÉUSSITE DES ÉLÈVES ---
+  const compEl = row.querySelector('.val16'); // Élèves ayant composé
+  const m10El = row.querySelector('.val17');  // Élèves avec moyenne >= 10
+
+  // On s'assure que le nombre d'élèves ayant composé ne dépasse pas l'effectif total
+  if (eff > 0 && compEl && (+compEl.value > eff)) {
+      compEl.value = eff;
+  }
+  
+  // On s'assure que le nombre d'élèves ayant la moyenne ne dépasse pas le nombre d'élèves ayant composé
+  if (compEl && m10El && (+m10El.value > +compEl.value)) {
+      m10El.value = compEl.value;
+  }
+
+  // Après chaque modification, on recalcule tout
+  recalcAll();
+});
+bCycle.addEventListener('change', async ()=>{ await fillSpecsForCycle(bCycle.value); BSTATE.clear(); CURRENT_CLASS=''; renderClassList(); renderDiscTable(); await autoLoadBaselines(); await refreshEffectifsForSelection(); });
+bSpec.addEventListener('change', async ()=>{ BSTATE.clear(); CURRENT_CLASS=''; renderClassList(); renderDiscTable(); await autoLoadBaselines(); await refreshEffectifsForSelection(); });
 
 btnPrefill.addEventListener('click', async ()=>{
   const evalNum = +document.getElementById('evaluation').value;
-  if(!selCycle.value || !selSpec.value || !evalNum) return alert('Choisir cycle, spécialité et évaluation');
+  if(!selCycle.value || !selSpec.value || !evalNum || evalNum < 2) {
+      return alert('Veuillez choisir un cycle, une spécialité et une évaluation (supérieure à 1) pour pouvoir préremplir.');
+  }
 
-  try{
+  try {
     const annee = getSchoolYear();
+    // L'URL est correcte, mais la logique du serveur doit renvoyer les données de l'évaluation N-1
     const rows = await getJSON(`/collecte/prefill?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(selCycle.value)}&specialite=${encodeURIComponent(selSpec.value)}&evaluation=${evalNum}`);
+    
+    // On organise les données reçues pour un accès facile
     const byKey = new Map((rows||[]).map(r=>[
-      `${String(r.classe||'').trim().toLowerCase()}||${String(r.discipline||'').trim().toLowerCase()}`, r
+      `${String(r.classe||'').trim()}||${String(r.discipline||'').trim()}`, r
     ]));
 
+    if (byKey.size === 0) {
+        alert("Aucune donnée trouvée pour l'évaluation précédente.");
+        return;
+    }
+
     document.querySelectorAll('.classeBloc').forEach(bloc=>{
-      const cls = (bloc.querySelector('h2')?.textContent||'').trim().toLowerCase();
+      const cls = (bloc.querySelector('h2')?.textContent||'').trim();
       bloc.querySelectorAll('tbody tr:not(.totalRow)').forEach(tr=>{
-        const disc = tr.cells[0].textContent.trim().toLowerCase();
+        const disc = tr.cells[0].textContent.trim();
         const src = byKey.get(`${cls}||${disc}`);
+        
+        // Si aucune donnée n'est trouvée pour cette discipline, on passe à la suivante
         if(!src) return;
-        const set = (sel,val)=>{ const el=tr.querySelector(sel); if(el) el.value = +val||0; };
-        set('.val2',  src.hF);   set('.val5',  src.lf);
-        set('.val8',  src.ldf);  set('.val11', src.tf);
-        set('.val14', src.tdf);  set('.val16', src.comp);
-        set('.val17', src.m10);  set('.val20', src.effPos);
+
+        // Helper pour mettre à jour une case
+        const set = (sel, val)=>{ const el=tr.querySelector(sel); if(el) el.value = val !== undefined ? +val : 0; };
+
+        // ON MET À JOUR TOUTES LES COLONNES "FAITES"
+        set('.val2',  src.heuresFaites);
+        set('.val5',  src.leconsFaites);
+        set('.val8',  src.leconsDigFaites);
+        set('.val11', src.tpFaits);
+        set('.val14', src.tpDigFaits);
+        set('.val16', src.elevesComposants);
+        set('.val17', src.elevesMoySup10);
+        set('.val20', src.effPos);
       });
     });
+
+    // Indispensable pour que les pourcentages et totaux se mettent à jour
     recalcAll();
-  }catch(e){ alert('Préremplissage: '+e.message); }
+    alert('Préremplissage effectué avec les données de l\'évaluation précédente.');
+
+  } catch(e) {
+    alert('Erreur lors du préremplissage : '+e.message);
+  }
 });
 
-
-async function updateSummary(){
-  const spec=selSpec.value||'—';
-  const n=document.querySelectorAll('.classeBloc').length;
-  const ev=document.getElementById('evaluation').value||'—';
-  sumSpec.textContent=spec;
-  sumEval.textContent=ev;
-  sumClasses.textContent=String(n);
-  if(n>0){
-    badgeClasses.textContent=`${n} ${n>1?'classes':'classe'}`;
-    badgeClasses.classList.remove('hidden');
-  }else{
-    badgeClasses.classList.add('hidden');
-  }
+function updateSummary(){
+  const n = document.querySelectorAll('.classeBloc').length;
+  sumSpec.textContent = selSpec.value || '—';
+  const ev = document.getElementById('evaluation').value;
+  sumEval.textContent = ev ? `Évaluation ${ev}` : '—';
+  sumClasses.textContent = n;
+  badgeClasses.textContent = `${n} classe${n>1?'s':''}`;
+  badgeClasses.classList.toggle('hidden', n===0);
 }
 
-/******************** Bootstrap ********************/
-(async function bootstrap(){
-  await refreshSettingsSidebar();
-  try{
-    const y=getSchoolYear();
-    const r=await fetch(`/api/settings?annee=${encodeURIComponent(y)}`, {credentials:'same-origin'});
-    if(r.status===404){ document.getElementById('btnOpenSettings')?.click(); }
-    else if(r.ok){
-      const js=await r.json();
-      const noEff=(js.effectifs||[]).length===0, noStaff=(js.staff||[]).length===0;
-      if(noEff && noStaff) document.getElementById('btnOpenSettings')?.click();
-    }
-  }catch(_){}
-})();
-
-/******************** IMPRESSION & EXPORT — COLLECTE ********************/
-function cloneTableWithoutInputs(tbl){
-  const c = tbl.cloneNode(true);
-  c.querySelectorAll('input').forEach(inp=>{
-    const td = inp.parentElement; const val = (inp.value||'0');
-    td.textContent = val;
-  });
-  return c;
-}
-function printCollecte(){
-  if(!document.querySelector('.classeBloc')) return alert('Aucune classe à imprimer.');
-  const w = window.open('', '_blank');
-  const title = `Collecte – ${selCycle.value||''} ${selSpec.value||''} — Éval. ${document.getElementById('evaluation').value||'—'} — ${((CONNECTED_USER.inspection||'')||'').toUpperCase()}`;
-  const meta = `${CONNECTED_USER.etab} • ${CONNECTED_USER.nom} • ${new Date().toLocaleString()} • Inspection ${CONNECTED_USER.inspection.toUpperCase()}`;
-  const style = `<style>*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif} h1{margin:0 0 6px;font-size:18px} h2{margin:10px 0 4px;font-size:16px} .muted{color:#6b7280;font-size:12px;margin-bottom:6px} table{width:100%;border-collapse:collapse;font-size:11px;margin:8px 0} th,td{border:1px solid #cfd4da;padding:4px 6px;text-align:center;vertical-align:middle} th{background:#eef1f4} .page-break{page-break-before:always} .header{display:flex;justify-content:space-between;align-items:center} .small{font-size:11px}</style>`;
-  w.document.write(`<html><head><title>${title}</title>${style}</head><body>`);
-  w.document.write(`<div class="header"><div><h1>${title}</h1><div class="muted">${meta}</div></div><div class="small">Cycle: <b>${selCycle.value||'—'}</b><br>Spécialité: <b>${selSpec.value||'—'}</b></div></div>`);
-  if(cycleTotalTable && cycleTotalTable.querySelector('tbody')){
-    w.document.write('<h2>Total / moyenne du cycle</h2>');
-    w.document.body.appendChild(cloneTableWithoutInputs(cycleTotalTable));
-  }
-  document.querySelectorAll('.classeBloc').forEach((bloc, idx)=>{
-    const h = bloc.querySelector('h2')?.textContent||'—';
-    w.document.write(`<h2 class="${idx? 'page-break':''}">${h}</h2>`);
-    const t = bloc.querySelector('table');
-    w.document.body.appendChild(cloneTableWithoutInputs(t));
-  });
-  w.document.write('</body></html>'); w.document.close(); w.focus(); w.print();
-}
-
-/******************** EXPLORATEUR PERSONNEL ********************/
+/******************** EXPLORATEUR & FICHE PERSONNEL ********************/
 const staffExplorerModal = document.getElementById('staffExplorerModal');
 const staffExplorerTbody = document.getElementById('staffExplorerTbody');
 const staffSearch = document.getElementById('staffSearch');
-document.getElementById('btnCloseStaffExplorer')?.addEventListener('click', ()=> staffExplorerModal.classList.remove('open'));
-document.getElementById('btnCloseStaffExplorer2')?.addEventListener('click', ()=> staffExplorerModal.classList.remove('open'));
+document.getElementById('btnCloseStaffExplorer')?.addEventListener('click', ()=> closeModal(staffExplorerModal));
+document.getElementById('btnCloseStaffExplorer2')?.addEventListener('click', ()=> closeModal(staffExplorerModal));
+const staffSheetModal = document.getElementById('staffSheetModal');
+const btnCloseStaffSheet = document.getElementById('btnCloseStaffSheet');
+const btnStaffSheetCancel = document.getElementById('btnStaffSheetCancel');
+const btnStaffSheetSave = document.getElementById('btnStaffSheetSave');
+const ssNom = document.getElementById('ssNom');
+const ssGrade = document.getElementById('ssGrade');
+const ssMatiere = document.getElementById('ssMatiere');
+const ssStatut = document.getElementById('ssStatut');
+const ssObs = document.getElementById('ssObs');
+const ssClasses = document.getElementById('ssClasses');
+const ssDisciplines = document.getElementById('ssDisciplines');
+let STAFF_SHEET_CURRENT = null;
+let STAFF_SHEET_CALLBACK = null;
 
 function openStaffExplorer(){
   (async()=>{
@@ -2364,89 +2573,130 @@ function openStaffExplorer(){
     renderStaffExplorerTable();
   })();
 }
-
 staffSearch?.addEventListener('input', ()=> renderStaffExplorerTable());
+function renderStaffExplorerTable() {
+  const q = (staffSearch.value || '').trim().toLowerCase();
+  const list = (SETTINGS_CACHE?.staff || []).slice().sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+  staffExplorerTbody.innerHTML = '';
 
-function renderStaffExplorerTable(){
-  const q=(staffSearch.value||'').trim().toLowerCase();
-  const list = (SETTINGS_CACHE?.staff||[]).slice().sort((a,b)=> (a.nom||'').localeCompare(b.nom||''));
-  staffExplorerTbody.innerHTML='';
-  list.forEach(p=>{
-    const classes = (p.classes||[]).filter(Boolean);
-    const discs = (p.disciplines||[]).filter(Boolean);
-    const hay = [p.nom,p.grade,p.matiere,p.statut,(p.obs||''),...classes,...discs].join(' ').toLowerCase();
-    if(q && !hay.includes(q)) return;
+  list.forEach(p => {
+    const classes = (p.classes || []).filter(Boolean);
+    const discs = (p.disciplines || []).filter(Boolean);
 
-    const tdClasses = classes.length? classes.map(c=> `<span class="pill">${c}</span>`).join(' ') : '<span class="muted">—</span>';
-    const tdDiscs = discs.length? discs.map(d=> `<span class="pill">${d}</span>`).join(' ') : '<span class="muted">—</span>';
+    // Log pour débogage
+    console.log("Enseignant:", p.nom, "Disciplines:", discs);
+
+    const hay = [
+      p.nom, p.grade, p.matiere, p.statut, (p.obs || ''),
+      p.prenom, p.matricule, p.telephone, p.categorie,
+      p.sexe, p.dateNaissance, p.regionOrigine,
+      p.departementOrigine, p.arrondissementOrigine,
+      p.posteOccupe, p.rangPoste, p.dateEntreeFP,
+      p.dateAffectation, ...classes, ...discs
+    ].join(' ').toLowerCase();
+
+    if (q && !hay.includes(q)) return;
+
+    // Générer le HTML pour les classes tenues
+    const tdClasses = classes.length ? classes.map(c => `<span class="pill">${c}</span>`).join(' ') : '<span class="muted">—</span>';
+
+    // Générer le HTML pour les disciplines enseignées
+    const tdDiscs = discs.length ? discs.map(d => `<span class="pill">${d}</span>`).join(' ') : '<span class="muted">—</span>';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${p.nom||'—'}</td>
-      <td>${p.grade||'—'}</td>
-      <td>${p.matiere||'—'}</td>
-      <td>${p.statut||'—'}</td>
+      <td>${p.nom || '—'}</td>
+      <td>${p.prenom || '—'}</td>
+      <td>${p.grade || '—'}</td>
+      <td>${p.matricule || '—'}</td>
+      <td>${p.matiere || '—'}</td>
+      <td>${p.statut || '—'}</td>
+      <td>${p.telephone || '—'}</td>
       <td>${tdClasses}</td>
       <td>${tdDiscs}</td>
-      <td>${p.obs?esc(String(p.obs)):'—'}</td>
-      <td><button class="btn" type="button">📄 Fiche</button></td>`;
-    tr.querySelector('button').addEventListener('click', ()=> openStaffSheet(p, updated=>{
-      const S = SETTINGS_CACHE?.staff||[];
-      const idx = S.findIndex(x=> (x.nom||'').trim().toLowerCase()===(updated.nom||'').trim().toLowerCase());
-      if(idx>=0) S[idx] = {...S[idx], ...updated}; else S.push(updated);
-      renderStaffExplorerTable();
+      <td>${p.obs ? esc(String(p.obs)) : '—'}</td>
+      <td>
+        <button class="btn" type="button">📄 Fiche</button>
+      </td>
+    `;
+
+    tr.querySelector('button').addEventListener('click', () => openStaffSheet(p, updated => {
+      const S = SETTINGS_CACHE?.staff || [];
+      const idx = S.findIndex(x => (x.nom || '').trim().toLowerCase() === (updated.nom || '').trim().toLowerCase());
+      if (idx >= 0) S[idx] = { ...S[idx], ...updated };
+      else S.push(updated);
+      renderStaffExplorerTable(); // Rafraîchir la table après modification
     }));
+
     staffExplorerTbody.appendChild(tr);
   });
 }
 
-/******************** FICHE ENSEIGNANT ********************/
-const staffSheetModal = document.getElementById('staffSheetModal');
-const btnCloseStaffSheet = document.getElementById('btnCloseStaffSheet');
-const btnStaffSheetCancel = document.getElementById('btnStaffSheetCancel');
-const btnStaffSheetSave = document.getElementById('btnStaffSheetSave');
-const ssNom = document.getElementById('ssNom');
-const ssGrade = document.getElementById('ssGrade');
-const ssMatiere = document.getElementById('ssMatiere');
-const ssStatut = document.getElementById('ssStatut');
-const ssObs = document.getElementById('ssObs');
-const ssClasses = document.getElementById('ssClasses');
-const ssDisciplines = document.getElementById('ssDisciplines');
 
-let STAFF_SHEET_CURRENT = null;
-let STAFF_SHEET_CALLBACK = null;
 
-btnCloseStaffSheet.addEventListener('click', ()=> closeModal(staffSheetModal));
-btnStaffSheetCancel.addEventListener('click', ()=> closeModal(staffSheetModal));
-btnStaffSheetSave.addEventListener('click', ()=>{
-  if(!STAFF_SHEET_CURRENT) return;
+btnCloseStaffSheet?.addEventListener('click', ()=> closeModal(staffSheetModal));
+btnStaffSheetCancel?.addEventListener('click', ()=> closeModal(staffSheetModal));
+btnStaffSheetSave?.addEventListener('click', async () => {
+  if (!STAFF_SHEET_CURRENT) return;
+
+  // 1. Récupérer les valeurs des champs
   const updated = {
     nom: ssNom.value.trim(),
+    prenom: document.getElementById('ssPrenom').value.trim(),
     grade: ssGrade.value.trim(),
     matiere: ssMatiere.value.trim(),
     statut: ssStatut.value.trim(),
     obs: ssObs.value.trim(),
-    classes: [...ssClasses.querySelectorAll('input[type=checkbox]:checked')].map(i=> i.value),
-    disciplines: [...ssDisciplines.querySelectorAll('input[type=checkbox]:checked')].map(i=> i.value)
+    matricule: document.getElementById('ssMatricule').value.trim(),
+    dateNaissance: document.getElementById('ssDateNaissance').value.trim(),
+    sexe: document.getElementById('ssSexe').value.trim(),
+    telephone: document.getElementById('ssTelephone').value.trim(),
+    categorie: document.getElementById('ssCategorie').value.trim(),
+    regionOrigine: document.getElementById('ssRegionOrigine').value.trim(),
+    departementOrigine: document.getElementById('ssDepartementOrigine').value.trim(),
+    arrondissementOrigine: document.getElementById('ssArrondissementOrigine').value.trim(),
+    posteOccupe: document.getElementById('ssPosteOccupe').value.trim(),
+    rangPoste: document.getElementById('ssRangPoste').value.trim(),
+    dateEntreeFP: document.getElementById('ssDateEntreeFP').value.trim(),
+    dateAffectation: document.getElementById('ssDateAffectation').value.trim(),
+    classes: [...ssClasses.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value),
+    disciplines: [...ssDisciplines.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value)
   };
-  if(SETTINGS_CACHE){
-    const S=SETTINGS_CACHE.staff||[];
-    const idx=S.findIndex(p=> (p.nom||'').trim().toLowerCase()===(STAFF_SHEET_CURRENT.nom||'').trim().toLowerCase());
-    if(idx>=0) S[idx]={...S[idx], ...updated}; else S.push(updated);
-    SETTINGS_CACHE.staff=S;
+
+  // 2. Mettre à jour SETTINGS_CACHE
+  if (SETTINGS_CACHE) {
+    const S = SETTINGS_CACHE.staff || [];
+    const idx = S.findIndex(p => (p.nom || '').trim().toLowerCase() === (STAFF_SHEET_CURRENT.nom || '').trim().toLowerCase());
+    if (idx >= 0) S[idx] = { ...S[idx], ...updated };
+    else S.push(updated);
+    SETTINGS_CACHE.staff = S;
   }
-  if(typeof STAFF_SHEET_CALLBACK==='function') STAFF_SHEET_CALLBACK(updated);
-  staffSheetModal.classList.remove('open');
+
+  // 3. Appeler le callback si défini
+  if (typeof STAFF_SHEET_CALLBACK === 'function') STAFF_SHEET_CALLBACK(updated);
+
+  // 4. Envoyer les modifications au backend
+  try {
+    const annee = (yearInput.value || '').trim() || getSchoolYear();
+    const response = await postJSON('/api/settings', {
+      annee,
+      staff: SETTINGS_CACHE.staff
+    });
+    console.log("Sauvegarde réussie :", response.message);
+  } catch (e) {
+    alert('Erreur lors de la sauvegarde : ' + e.message);
+    console.error("Erreur sauvegarde:", e);
+  }
+
+  // 5. Fermer la modale
+  closeModal(staffSheetModal);
 });
+
 
 function makeCheckboxPill(val, selected){
   const id = 'x_'+Math.random().toString(36).slice(2);
-  return `<label for="${id}" class="pill" title="${val}">
-    <input id="${id}" type="checkbox" value="${val}" ${selected?'checked':''}>
-    <span>${val}</span>
-  </label>`;
+  return `<label for="${id}" class="pill" title="${val}"><input id="${id}" type="checkbox" value="${val}" ${selected?'checked':''}><span>${val}</span></label>`;
 }
-
 async function choicesForDisciplines(){
   const cyc = (bCycle.value || selCycle.value || '').trim();
   const spec= (bSpec.value  || selSpec.value  || '').trim();
@@ -2456,352 +2706,148 @@ async function choicesForDisciplines(){
     return [...new Set(rows.map(r=> String(r.nom||'').trim()).filter(Boolean))].sort();
   }catch(_){ return []; }
 }
-
 function choicesForClasses(){
   const fromBState = [...BSTATE.keys()];
   const fromEff = (SETTINGS_CACHE?.effectifs||[]).map(e=> String(e.classe||'').trim()).filter(Boolean);
   return [...new Set([...fromBState, ...fromEff])].sort((a,b)=> a.localeCompare(b));
 }
-
-
 function fillCheckboxGroup(containerEl, values, selected){
   containerEl.innerHTML = values.map(v => makeCheckboxPill(v, selected.includes(v))).join('');
 }
-
-function openStaffSheet(person, onSave){
-  (async()=>{
-    STAFF_SHEET_CURRENT  = {...person};
+function openStaffSheet(person, onSave) {
+  (async () => {
+    STAFF_SHEET_CURRENT = { ...person };
     STAFF_SHEET_CALLBACK = onSave;
-
-    ssNom.value    = person.nom||'';
-    ssGrade.value  = person.grade||'';
-    ssMatiere.value= person.matiere||'';
-    ssStatut.value = person.statut||'';
-    ssObs.value    = person.obs||'';
-
+    // Remplir les champs existants
+    ssNom.value = person.nom || '';
+    ssGrade.value = person.grade || '';
+    ssMatiere.value = person.matiere || '';
+    ssStatut.value = person.statut || '';
+    ssObs.value = person.obs || '';
+    // Remplir les NOUVEAUX champs
+    document.getElementById('ssPrenom').value = person.prenom || '';
+    document.getElementById('ssMatricule').value = person.matricule || '';
+    document.getElementById('ssDateNaissance').value = person.dateNaissance || '';
+    document.getElementById('ssSexe').value = person.sexe || '';
+    document.getElementById('ssTelephone').value = person.telephone || '';
+    document.getElementById('ssCategorie').value = person.categorie || '';
+    document.getElementById('ssRegionOrigine').value = person.regionOrigine || '';
+    document.getElementById('ssDepartementOrigine').value = person.departementOrigine || '';
+    document.getElementById('ssArrondissementOrigine').value = person.arrondissementOrigine || '';
+    document.getElementById('ssPosteOccupe').value = person.posteOccupe || '';
+    document.getElementById('ssRangPoste').value = person.rangPoste || '';
+    document.getElementById('ssDateEntreeFP').value = person.dateEntreeFP || '';
+    document.getElementById('ssDateAffectation').value = person.dateAffectation || '';
+    // Remplir les classes et disciplines
     const classes = choicesForClasses();
-    const discs   = await choicesForDisciplines();
-
-    fillCheckboxGroup(ssClasses, classes, (person.classes||[]));
-    fillCheckboxGroup(ssDisciplines, discs, (person.disciplines||[]));
-
-    // ouvre la modale (garde ta logique actuelle si tu préfères)
-    document.getElementById('staffSheetModal').classList.add('open');
-    document.getElementById('staffSheetModal').setAttribute('aria-hidden','false');
+    const discs = await choicesForDisciplines();
+    fillCheckboxGroup(ssClasses, classes, (person.classes || []));
+    fillCheckboxGroup(ssDisciplines, discs, (person.disciplines || []));
+    openModal(staffSheetModal);
   })();
 }
 
 
-/******************** Impression & Export du personnel ********************/
-function staffRowsForExport(){
-  const staff = (SETTINGS_CACHE?.staff||[]).slice().sort((a,b)=> (a.nom||'').localeCompare(b.nom||''));
-  return staff.map(p=> ({
-    Nom: p.nom||'',
-    Grade: p.grade||'',
-    Matiere: p.matiere||'',
-    Statut: p.statut||'',
-    Classes: (p.classes||[]).join(' | '),
-    Disciplines: (p.disciplines||[]).join(' | '),
-    Observations: p.obs||''
+/******************** IMPRESSION & EXPORT — PERSONNEL & COLLECTE ********************/
+function staffRowsForExport() {
+  const staff = (SETTINGS_CACHE?.staff || []).slice().sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+  return staff.map(p => ({
+    Nom: p.nom || '',
+    Prénom: p.prenom || '',
+    Grade: p.grade || '',
+    Matière: p.matiere || '',
+    Statut: p.statut || '',
+    Matricule: p.matricule || '',
+    Téléphone: p.telephone || '',
+    Catégorie: p.categorie || '',
+    Sexe: p.sexe || '',
+    'Date de naissance': p.dateNaissance || '',
+    'Région d\'origine': p.regionOrigine || '',
+    'Département d\'origine': p.departementOrigine || '',
+    'Arrondissement d\'origine': p.arrondissementOrigine || '',
+    'Poste occupé': p.posteOccupe || '',
+    'Rang du poste': p.rangPoste || '',
+    'Date d\'entrée FP': p.dateEntreeFP || '',
+    'Date d\'affectation': p.dateAffectation || '',
+    'Classes tenues': (p.classes || []).join(' | '),
+    'Disciplines enseignées': (p.disciplines || []).join(' | '),
+    Observations: p.obs || ''
   }));
 }
-// --- Export CSV du personnel (min.)
+
 function exportStaffCSV(){
-  const staff = (SETTINGS_CACHE?.staff || []).slice();
-  const rows = [["Nom","Grade","Matière","Statut","Classes tenues","Disciplines","Obs."]];
-  staff.forEach(p=>{
-    rows.push([
-      p.nom||"", p.grade||"", p.matiere||"", p.statut||"",
-      (p.classes||[]).join(", "), (p.disciplines||[]).join(", "), (p.obs||"")
-    ]);
-  });
-  const csv = rows.map(r=>r.map(x=>{
-    const s=String(x??""); return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
-  }).join(";")).join("\n");
+  const staff = staffRowsForExport();
+  const rows = [Object.keys(staff[0]||[])];
+  staff.forEach(p=>rows.push(Object.values(p)));
+  const csv = rows.map(r=>r.map(x=>{ const s=String(x??""); return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; }).join(";")).join("\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8"}), url=URL.createObjectURL(blob);
   const a=document.createElement("a"); a.href=url; a.download="personnel.csv"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 }
-
-// --- Impression liste du personnel (min.)
-function printStaff(){
-  const staff = (SETTINGS_CACHE?.staff || []).slice();
-  const w = window.open("", "_blank");
-  w.document.write(`<html><head><title>Personnel</title>
-  <style>body{font-family:Arial} table{border-collapse:collapse;width:100%} th,td{border:1px solid #cfd4da;padding:6px;font-size:12px;text-align:left}</style>
-  </head><body><h1>Personnel enseignant</h1><table><thead><tr>
-  <th>Nom</th><th>Grade</th><th>Matière</th><th>Statut</th><th>Classes</th><th>Disciplines</th><th>Obs.</th></tr></thead><tbody>`);
-  staff.forEach(p=>{
-    w.document.write(`<tr><td>${(p.nom||'').replace(/</g,"&lt;")}</td><td>${(p.grade||'').replace(/</g,"&lt;")}</td>
-    <td>${(p.matiere||'').replace(/</g,"&lt;")}</td><td>${(p.statut||'').replace(/</g,"&lt;")}</td>
-    <td>${(p.classes||[]).map(c=>c.replace(/</g,"&lt;")).join(", ")}</td>
-    <td>${(p.disciplines||[]).map(d=>d.replace(/</g,"&lt;")).join(", ")}</td>
-    <td>${(p.obs||'').replace(/</g,"&lt;")}</td></tr>`);
-  });
-  w.document.write(`</tbody></table></body></html>`); w.document.close(); w.focus(); w.print();
-}
-
-// --- Édition "Fiche enseignant" (min. : charge/sauve les champs texte)
-function openStaffSheet(data={}, onSave=()=>{}){
-  const modal = document.getElementById('staffSheetModal');
-  const $ = id => document.getElementById(id);
-  $('#ssNom').value    = data.nom||"";
-  $('#ssGrade').value  = data.grade||"";
-  $('#ssMatiere').value= data.matiere||"";
-  $('#ssStatut').value = data.statut||"";
-  $('#ssObs').value    = data.obs||"";
-
-  // (facultatif) rendez interactifs ssClasses / ssDisciplines si vous avez des chips à gérer
-
-  const onCancel = ()=> closeModal(modal);
-  const onSaveClick = ()=>{
-    const updated = {
-      ...data,
-      nom: $('#ssNom').value.trim(),
-      grade: $('#ssGrade').value.trim(),
-      matiere: $('#ssMatiere').value.trim(),
-      statut: $('#ssStatut').value.trim(),
-      obs: $('#ssObs').value.trim()
-      // + classes / disciplines si vous les éditez ici
-    };
-    onSave(updated);
-    closeModal(modal);
-  };
-  $('#btnStaffSheetCancel')?.addEventListener('click', onCancel, {once:true});
-  $('#btnStaffSheetSave')?.addEventListener('click', onSaveClick, {once:true});
-  openModal(modal);
-}
-
 function printStaff(){
   const rows = staffRowsForExport();
   if(!rows.length) return alert('Aucun enseignant.');
   const w = window.open('', '_blank');
   const title = `Personnel enseignant — ${CONNECTED_USER.etab} — ${getSchoolYear()} — ${CONNECTED_USER.inspection.toUpperCase()}`;
   const style = `<style>*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif} h1{margin:0 0 6px;font-size:18px} .muted{color:#6b7280;font-size:12px;margin-bottom:6px} table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0} th,td{border:1px solid #cfd4da;padding:6px;text-align:left} th{background:#eef1f4}</style>`;
-  w.document.write(`<html><head><title>${title}</title>${style}</head><body>`);
-  w.document.write(`<h1>${title}</h1>`);
-  w.document.write(`<div class="muted">${new Date().toLocaleString()}</div>`);
+  w.document.write(`<html><head><title>${title}</title>${style}</head><body><h1>${title}</h1><div class="muted">${new Date().toLocaleString()}</div>`);
   w.document.write('<table><thead><tr><th>Nom</th><th>Grade</th><th>Matière</th><th>Statut</th><th>Classes tenues</th><th>Disciplines</th><th>Observations</th></tr></thead><tbody>');
-  rows.forEach(r=>{
-    w.document.write(`<tr><td>${r.Nom||''}</td><td>${r.Grade||''}</td><td>${r.Matiere||''}</td><td>${r.Statut||''}</td><td>${r.Classes||''}</td><td>${r.Disciplines||''}</td><td>${r.Observations||''}</td></tr>`);
-  });
+  rows.forEach(r=>{ w.document.write(`<tr><td>${r.Nom||''}</td><td>${r.Grade||''}</td><td>${r.Matiere||''}</td><td>${r.Statut||''}</td><td>${r.Classes||''}</td><td>${r.Disciplines||''}</td><td>${r.Observations||''}</td></tr>`); });
   w.document.write('</tbody></table></body></html>');
   w.document.close(); w.focus(); w.print();
 }
-function printCollecte(){ window.print(); }
-
-function updateSummary(){
-  const n = document.querySelectorAll('.classeBloc').length;
-  sumSpec.textContent = selSpec.value || '—';
-  sumEval.textContent = document.getElementById('evaluation').value || '—';
-  sumClasses.textContent = n;
-  badgeClasses.textContent = `${n} classe${n>1?'s':''}`;
-  badgeClasses.classList.toggle('hidden', n===0);
+function cloneTableWithoutInputs(tbl){
+  const c = tbl.cloneNode(true);
+  c.querySelectorAll('input').forEach(inp=>{ const td = inp.parentElement; td.textContent = inp.value||'0'; });
+  return c;
+}
+function printCollecte(){
+  if(!document.querySelector('.classeBloc')) return alert('Aucune classe à imprimer.');
+  const w = window.open('', '_blank');
+  const title = `Collecte – ${selCycle.value||''} ${selSpec.value||''} — Éval. ${document.getElementById('evaluation').value||'—'} — ${((CONNECTED_USER.inspection||'')||'').toUpperCase()}`;
+  const meta = `${CONNECTED_USER.etab} • ${CONNECTED_USER.nom} • ${new Date().toLocaleString()} • Inspection ${CONNECTED_USER.inspection.toUpperCase()}`;
+  const style = `<style>*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif} h1{margin:0 0 6px;font-size:18px} h2{margin:10px 0 4px;font-size:16px} .muted{color:#6b7280;font-size:12px;margin-bottom:6px} table{width:100%;border-collapse:collapse;font-size:11px;margin:8px 0} th,td{border:1px solid #cfd4da;padding:4px 6px;text-align:center;vertical-align:middle} th{background:#eef1f4} .page-break{page-break-before:always} .header{display:flex;justify-content:space-between;align-items:center} .small{font-size:11px}</style>`;
+  w.document.write(`<html><head><title>${title}</title>${style}</head><body>`);
+  w.document.write(`<div class="header"><div><h1>${title}</h1><div class="muted">${meta}</div></div><div class="small">Cycle: <b>${selCycle.value||'—'}</b><br>Spécialité: <b>${selSpec.value||'—'}</b></div></div>`);
+  if(cycleTotalTable && cycleTotalTable.querySelector('tbody')) {
+    w.document.write('<h2>Total / moyenne du cycle</h2>');
+    w.document.body.appendChild(cloneTableWithoutInputs(cycleTotalTable));
+  }
+  document.querySelectorAll('.classeBloc').forEach((bloc, idx)=>{
+    const h = bloc.querySelector('h2')?.textContent||'—';
+    w.document.write(`<h2 class="${idx? 'page-break':''}">${h}</h2>`);
+    const t = bloc.querySelector('table');
+    w.document.body.appendChild(cloneTableWithoutInputs(t));
+  });
+  w.document.write('</body></html>'); w.document.close(); w.focus(); w.print();
 }
 
-function openStaffExplorer(){ openModal(document.getElementById('staffExplorerModal')); }
-function openStaffSheet(data={}, onSave=()=>{}){ openModal(document.getElementById('staffSheetModal')); /* hydrate si besoin */ }
-function exportStaffCSV(){ alert('TODO: export CSV du personnel'); }
-function printStaff(){ window.print(); }
+/******************** Bootstrap ********************/
+(async function bootstrap() {
+  await refreshFiles();
+  await refreshSettingsSidebar();
 
-</script>
-<script>
-// ---- Compat: CSS.escape shim (anciens navigateurs)
-(function(){
-  if (!window.CSS) window.CSS = {};
-  if (!CSS.escape) {
-    CSS.escape = function (s) {
-      return String(s).replace(/[^a-zA-Z0-9_\-]/g, '\\$&');
-    };
-  }
+  try {
+    const y = getSchoolYear();
+    const r = await fetch(`/api/settings?annee=${encodeURIComponent(y)}`, { credentials: 'same-origin' });
+
+    if (r.status === 404) {
+      document.getElementById('btnOpenSettings')?.click();
+    } else if (r.ok) {
+      const js = await r.json();
+      SETTINGS_CACHE = js;
+      // Mettre à jour l'UI avec les données du personnel
+      (SETTINGS_CACHE?.staff || []).forEach(addStaffRow);
+      const noEff = (js.effectifs || []).length === 0;
+      const noStaff = (js.staff || []).length === 0;
+      if (noEff && noStaff) document.getElementById('btnOpenSettings')?.click();
+    }
+  } catch (_) {}
+
+  updateSummary();
 })();
 
-// ---- Résumé (badge, cartes)
-function updateSummary(){
-  sumSpec.textContent   = selSpec.value || '—';
-  const ev = document.getElementById('evaluation')?.value || '';
-  sumEval.textContent   = ev ? `Évaluation ${ev}` : '—';
-  const n = document.querySelectorAll('.classeBloc').length;
-  sumClasses.textContent= String(n);
-  badgeClasses.textContent = `${n} classe${n>1?'s':''}`;
-  badgeClasses.classList.toggle('hidden', n===0);
-}
 
-async function fillMainSpecsForCycle(cycle){
-  selSpec.innerHTML = '<option value="">-- Choisir --</option>';
-  if(!cycle){ return; }
-  try{
-    const rows = await getJSON(`/api/disciplines?inspection=${encodeURIComponent(CONNECTED_USER.inspection)}&cycle=${encodeURIComponent(cycle)}&actif=true`);
-    const specs = [...new Set((rows||[]).map(r=>r.specialite))].sort();
-    specs.forEach(s=> selSpec.insertAdjacentHTML('beforeend', `<option value="${s}">${s}</option>`));
-  }catch(_){}
-}
-
-selCycle.addEventListener('change', async ()=>{
-  contSpec.classList.toggle('hidden', !selCycle.value);
-  contEval.classList.add('hidden');
-  formulaires.innerHTML='';
-  await fillMainSpecsForCycle(selCycle.value);
-  updateSummary();
-});
-
-selSpec.addEventListener('change', async ()=>{
-  contEval.classList.toggle('hidden', !selSpec.value);
-  if(selCycle.value && selSpec.value){
-    await buildCollecteFor(selCycle.value, selSpec.value);
-  }
-});
-
-document.getElementById('evaluation')?.addEventListener('change', updateSummary);
-
-// Bouton “Préremplir” – à défaut de l’historique, on applique les plafonds/eff.
-btnPrefill.addEventListener('click', ()=> applyEffectifCapsAndPrefill());
-
-
-// ---- Impression collecte (simple)
-function printCollecte(){ window.print(); }
-
-function exportStaffCSV(){
-  const rows = [...document.querySelectorAll('#staffTbody tr')].map(tr=>{
-    const t=tr.querySelectorAll('td input, td textarea');
-    return [t[0].value,t[1].value,t[2].value,t[3].value,t[4].value];
-  }).filter(r=>r[0]);
-  const csv = ['Nom;Grade;Matière;Statut;Obs', ...rows.map(r=>r.map(x=>String(x||'').replace(/"/g,'""')).join(';'))].join('\n');
-  const url = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  const a = document.createElement('a'); a.href=url; a.download='personnel.csv'; a.click(); URL.revokeObjectURL(url);
-}
-
-function printStaff(){ window.print(); }
-
-function openStaffExplorer(){
-  const m = document.getElementById('staffExplorerModal');
-  if(m) openModal(m);
-  // (Optionnel) remplir #staffExplorerTbody ici si besoin
-}
-
-
-// ---- Explorateur personnel — stubs sûrs (évite les ReferenceError)
-function openStaffExplorer(){
-  const m = document.getElementById('staffExplorerModal');
-  const tbody = document.getElementById('staffExplorerTbody');
-  tbody.innerHTML = '';
-  const staff = (SETTINGS_CACHE && SETTINGS_CACHE.staff) || [];
-  staff.forEach(p=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${(p.nom||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[s]))}</td>
-      <td>${(p.grade||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[s]))}</td>
-      <td>${(p.matiere||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[s]))}</td>
-      <td>${(p.statut||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[s]))}</td>
-      <td>${(p.classes||[]).join(', ')}</td>
-      <td>${(p.disciplines||[]).join(', ')}</td>
-      <td>${(p.obs||'').replace(/[&<>]/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[s]))}</td>
-      <td><button class="btn" type="button">📄</button></td>`;
-    tr.querySelector('button')?.addEventListener('click', ()=> openStaffSheet(p));
-    tbody.appendChild(tr);
-  });
-  openModal(m);
-}
-function exportStaffCSV(){
-  const staff = (SETTINGS_CACHE && SETTINGS_CACHE.staff) || [];
-  const rows = [['Nom','Grade','Matière','Statut','Obs.','Classes tenues','Disciplines enseignées']];
-  staff.forEach(p=>{
-    rows.push([
-      p.nom||'', p.grade||'', p.matiere||'', p.statut||'', (p.obs||'').replace(/\n/g,' '),
-      (p.classes||[]).join(', '), (p.disciplines||[]).join(', ')
-    ]);
-  });
-  const csv = rows.map(r=>r.map(x=>{
-    const s=String(x??''); return /[",;\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
-  }).join(';')).join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'personnel.csv';
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
-function printStaff(){ window.print(); }
-
-function openStaffSheet(person = {}, onSave){
-  const m = document.getElementById('staffSheetModal');
-  const byId = id => document.getElementById(id);
-  byId('ssNom').value = person.nom||'';
-  byId('ssGrade').value = person.grade||'';
-  byId('ssMatiere').value = person.matiere||'';
-  byId('ssStatut').value = person.statut||'';
-  byId('ssObs').value = person.obs||'';
-  const clsBox = byId('ssClasses'); const disBox = byId('ssDisciplines');
-  clsBox.innerHTML = ''; disBox.innerHTML = '';
-  (person.classes||[]).forEach(c=>{
-    const span=document.createElement('span'); span.className='pill'; span.textContent=c; clsBox.appendChild(span);
-  });
-  (person.disciplines||[]).forEach(d=>{
-    const span=document.createElement('span'); span.className='pill'; span.textContent=d; disBox.appendChild(span);
-  });
-  // boutons
-  byId('btnStaffSheetSave').onclick = ()=>{
-    const out = {
-      nom: byId('ssNom').value.trim(),
-      grade: byId('ssGrade').value.trim(),
-      matiere: byId('ssMatiere').value.trim(),
-      statut: byId('ssStatut').value.trim(),
-      obs: byId('ssObs').value.trim(),
-      classes: person.classes||[],
-      disciplines: person.disciplines||[]
-    };
-    // sync dans SETTINGS_CACHE si possible
-    if(SETTINGS_CACHE){
-      const list = SETTINGS_CACHE.staff = SETTINGS_CACHE.staff || [];
-      const i = list.findIndex(p=> (p.nom||'').trim().toLowerCase() === out.nom.toLowerCase());
-      if(i>=0) list[i] = {...list[i], ...out}; else list.push(out);
-    }
-    if(typeof onSave==='function') onSave(out);
-    closeModal(m);
-  };
-  byId('btnStaffSheetCancel').onclick = ()=> closeModal(m);
-  byId('btnCloseStaffSheet').onclick = ()=> closeModal(m);
-  openModal(m);
-}
-
-// ---- Sidebar stats (remplace la version tronquée)
-async function refreshSettingsSidebar(){
-  const y = getSchoolYear();
-  yearStat.textContent = y;
-  try{
-    const r = await fetch(`/api/settings?annee=${encodeURIComponent(y)}`, {credentials:'same-origin'});
-    if(!r.ok){ SETTINGS_CACHE=null; effStaffStat.textContent='Aucun paramétrage trouvé.'; effStaffDetails.classList.add('hidden'); return; }
-    SETTINGS_CACHE = await r.json();
-    const eff = SETTINGS_CACHE.effectifs||[];
-    const staff = SETTINGS_CACHE.staff||[];
-    const totEleves = eff.reduce((s,e)=> s + (+e.filles||0) + (+e.garcons||0), 0);
-    const nbDiv = eff.length;
-    const nbEns = staff.length;
-
-    effStaffStat.innerHTML = `${nbDiv} division${nbDiv>1?'s':''}, ${totEleves} élève${totEleves>1?'s':''} • ${nbEns} enseignant${nbEns>1?'s':''}`;
-    // mini-tableau des classes
-    const wrap = document.createElement('div');
-    wrap.innerHTML = `
-      <table class="tbl-mini" style="margin-top:6px">
-        <thead><tr><th style="text-align:left">Classe</th><th>Div.</th><th>F</th><th>G</th></tr></thead>
-        <tbody>${eff.map(e=>{
-          const m = String(e.classe||'').match(/\((\d+)\)\s*$/);
-          const div = m ? +m[1] : 1;
-          return `<tr><td style="text-align:left">${(e.classe||'').replace(/\s*\(\d+\)\s*$/,'')}</td><td>${div}</td><td>${+e.filles||0}</td><td>${+e.garcons||0}</td></tr>`;
-        }).join('')}</tbody>
-      </table>`;
-    effTableWrap.innerHTML = '';
-    effTableWrap.appendChild(wrap);
-    effStaffDetails.classList.remove('hidden');
-  }catch(_){
-    effStaffStat.textContent='Aucun paramétrage trouvé.';
-    effStaffDetails.classList.add('hidden');
-  }
-}
-
-// ---- Au chargement, s’assurer que le résumé est cohérent
-updateSummary();
-refreshSettingsSidebar();
 </script>
 
 </body>
 </html>
-

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fichier complet des enseignants — <%= (filters.annee||'') %></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f7f7f9; --ink:#111827; --muted:#434345; --card:#ffffff; --line:#e5e7eb;
+      --brand:#0ea5e9; --thead:#9aa3ad; --thead-ink:#ffffff;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--ink)}
+    a{color:inherit;text-decoration:none}
+
+    /* ===== Header (identique dashboard) ===== */
+    header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+    header h1{margin:0;font-size:16px;font-weight:700}
+    header .who{color:var(--muted);font-size:12px}
+    header .tabs{display:flex;gap:6px}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+    .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+    .btn.soft{background:#f1f5f9}
+
+    .wrap{padding:18px;max-width:1200px;margin:0 auto}
+    .hint{color:var(--muted);font-size:12px;margin:4px 0 12px}
+
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    input,select{padding:6px 8px;border:1px solid #cfd4da;border-radius:6px}
+    .btn.action{padding:8px 12px}
+
+    .card{background:#fff;border:1px solid var(--line);border-radius:12px;margin:18px 0;overflow:hidden}
+    .card .meta{padding:10px 12px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:200px 1fr;gap:8px 16px;background:#fafafa}
+    .meta label{color:var(--muted)}
+    .meta div{min-height:20px}
+
+    /* ===== Tableau ===== */
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid var(--line);padding:8px 10px;font-size:12px;vertical-align:middle;text-align:center}
+    thead th{background:var(--thead); color:var(--thead-ink); -webkit-print-color-adjust:exact; print-color-adjust:exact}
+
+    /* Colonne “Noms et prénoms” plus lisible (alignée à gauche) */
+    td.col-name{text-align:left}
+
+    /* ===== Impression ===== */
+    @media print{
+      @page{ size: A4 landscape; margin:12mm }
+      header,.toolbar{display:none !important}
+      body{background:#fff}
+      .wrap{max-width:none}
+      .card{break-inside:avoid-page;margin:0 0 10mm 0;border-color:#bbb}
+      table{font-size:11px}
+      th,td{padding:6px 8px}
+      thead{display:table-header-group}  /* répète l’en-tête à chaque page */
+      tfoot{display:table-footer-group}
+      tr{break-inside:avoid}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Nav ===== -->
+  <header>
+    <div>
+      <h1>Tableau de bord Inspecteur — <span class="who"><%= (user.inspection||'').toUpperCase() %> • <%= user.nom %></span></h1>
+    </div>
+    <div class="tabs">
+      <a href="/inspector" class="btn">Synthèse</a>
+      <a href="/inspector/carte" class="btn">Carte scolaire</a>
+      <a href="/fichiers" class="btn">Échanges</a>
+      <a id="btnStaff" href="/inspecteur/enseignants" class="btn primary">Fichier personnel</a>
+      <form action="/auth/logout" method="post" style="display:inline"><button class="btn">Déconnexion</button></form>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <h2 style="margin:16px 0 6px">Fichier complet des enseignants — <%= (filters.annee||'') %></h2>
+    <div class="hint">Un tableau par établissement (si plusieurs pour le département sélectionné).</div>
+
+    <!-- Filtres -->
+    <form class="toolbar" onsubmit="return false">
+      <input type="hidden" id="annee" value="<%= filters.annee||'' %>"/>
+      <select id="selDept" title="Département"><option value="">— Département</option></select>
+      <select id="selEtab" title="Établissement"><option value="">— Établissement</option></select>
+      <input id="q" type="text" placeholder="Nom, matricule, grade, poste…"/>
+      <button id="btnFiltrer" type="button" class="btn action">Filtrer</button>
+
+      <!-- 👇 NOUVEAU : Export Excel -->
+      <button type="button" class="btn action soft" id="btnXls">Export Excel</button>
+
+      <button type="button" class="btn action soft" id="btnPrint">Imprimer</button>
+    </form>
+
+    <!-- Sortie : 1 carte par établissement -->
+    <div id="cards"></div>
+  </div>
+
+  <script>
+  (function () {
+    const cards   = document.getElementById('cards');
+    const selDept = document.getElementById('selDept');
+    const selEtab = document.getElementById('selEtab');
+    const inputQ  = document.getElementById('q');
+    const anneeEl = document.getElementById('annee');
+
+    // ===== Spécialité = inspection (passée par la route) + “beautifier”
+    const RAW_SPEC = <%- JSON.stringify((inspSpec || '').toString()) %>;
+    function prettySpec(s){
+      if(!s) return '';
+      let t = String(s).replace(/[_\-]+/g,' ').trim();
+      if (/\s/.test(t)) return t.toUpperCase();
+
+      const lower = t.toLowerCase();
+      const suffixes = [
+        'plastiques','artistiques','industrielles','mecaniques','mécaniques','civil','civile',
+        'hotellerie','hôtellerie','restauration','decoration','coiffure','esthetique',
+        'informatique','agriculture','elevage','commerce','gestion','menuiserie',
+        'metallurgie','froid','climatisation','electricite','electronique'
+      ];
+      for (const suf of suffixes){
+        if (lower.endsWith(suf) && lower.length > suf.length + 1){
+          const head = lower.slice(0, lower.length - suf.length);
+          return (head + ' ' + suf).toUpperCase();
+        }
+      }
+      if (lower.length >= 8){
+        const mid = Math.floor(lower.length/2);
+        return (lower.slice(0, mid) + ' ' + lower.slice(mid)).toUpperCase();
+      }
+      return t.toUpperCase();
+    }
+    const SPEC = prettySpec(RAW_SPEC);
+
+    /* ===== Helpers ===== */
+    const esc = (s)=> String(s??'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+    // -> jj/mm/aaaa (accepte YYYY-MM-DD, Date, etc.)
+    function fmt(v){
+      if(!v) return '';
+      const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+      const d = new Date(v);
+      if (isNaN(d)) return esc(v);
+      const pad = n => String(n).padStart(2,'0');
+      return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+    }
+
+    function populateSelect(select, values, keepValue){
+      const val = keepValue ? select.value : '';
+      select.innerHTML = '<option value="">— ' + (select===selDept?'Département':'Établissement') + '</option>' +
+        values.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+      if (keepValue && values.includes(val)) select.value = val;
+    }
+    function groupBy(xs, key){ const m=new Map(); xs.forEach(x=>{const k=x[key]||'—'; if(!m.has(k)) m.set(k,[]); m.get(k).push(x);}); return m; }
+
+    async function load() {
+      const qp = new URLSearchParams();
+      if (selDept.value) qp.set('departement', selDept.value);
+      if (selEtab.value) qp.set('etablissement', selEtab.value);
+      if (inputQ.value.trim()) qp.set('q', inputQ.value.trim());
+      if (anneeEl.value) qp.set('annee', anneeEl.value);
+
+      const res  = await fetch('/api/inspecteur/carte/region-staff?' + qp.toString(), { credentials: 'same-origin' });
+      const data = await res.json();
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+
+      // alimente les selects
+      const depts = [...new Set(rows.map(r=>r.departement).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
+      populateSelect(selDept, depts, true);
+
+      const etabsAll = selDept.value
+        ? [...new Set(rows.filter(r=>r.departement===selDept.value).map(r=>r.etablissement))].sort((a,b)=>a.localeCompare(b,'fr'))
+        : [...new Set(rows.map(r=>r.etablissement))].sort((a,b)=>a.localeCompare(b,'fr'));
+      populateSelect(selEtab, etabsAll, true);
+
+      // cartes
+      const byEtab = groupBy(rows, 'etablissement');
+      const out = [];
+      for (const [etab, list] of byEtab.entries()) {
+        if (!list.length) continue;
+        const dept = list[0].departement || '—';
+
+        out.push(`
+          <div class="card">
+            <div class="meta">
+              <label>Département :</label><div>${esc(dept)}</div>
+              <label>Établissement :</label><div>${esc(etab)}</div>
+              <label>Spécialité / Série :</label><div>${esc(SPEC)}</div>
+            </div>
+            <div class="tablewrap">
+              <table role="table" aria-label="Fichier du personnel enseignant">
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>Noms et prénoms</th>
+                    <th>Matricule</th>
+                    <th>Grade</th>
+                    <th>Catégorie</th>
+                    <th>Date de naissance</th>
+                    <th>Sexe</th>
+                    <th>Région d'origine</th>
+                    <th>Département d'origine</th>
+                    <th>Arrondissement d'origine</th>
+                    <th>Date d'entrée à la fonction publique</th>
+                    <th>Poste occupé</th>
+                    <th>Date d’affectation ou de nomination</th>
+                    <th>Rang du poste</th>
+                    <th>Contact téléphonique</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${list.map((r,i)=>`
+                    <tr>
+                      <td>${i+1}</td>
+                      <td class="col-name">${esc(r.nom||'')}</td>
+                      <td>${esc(r.matricule||'')}</td>
+                      <td>${esc(r.grade||'')}</td>
+                      <td>${esc(r.categorie||'')}</td>
+                      <td>${fmt(r.dateNaissance)}</td>
+                      <td>${esc(r.sexe||'')}</td>
+                      <td>${esc(r.regionOrigine||'')}</td>
+                      <td>${esc(r.departementOrigine||'')}</td>
+                      <td>${esc(r.arrondissementOrigine||'')}</td>
+                      <td>${fmt(r.dateEntreeFP)}</td>
+                      <td>${esc(r.posteOccupe||'')}</td>
+                      <td>${fmt(r.dateAffectation)}</td>
+                      <td>${esc(r.rangPoste||'')}</td>
+                      <td>${esc(r.telephone||'')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `);
+      }
+      cards.innerHTML = out.join('') || '<div class="hint">Aucun résultat pour les filtres choisis.</div>';
+    }
+
+    selDept.addEventListener('change', () => { selEtab.value=''; load(); });
+    selEtab.addEventListener('change', load);
+    document.getElementById('btnFiltrer').addEventListener('click', load);
+    inputQ.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); load(); } });
+
+    // Imprimer (ouvre la page /inspecteur/enseignants/print avec les mêmes filtres)
+    document.getElementById('btnPrint').addEventListener('click', () => {
+      const qp = new URLSearchParams();
+      const an = document.getElementById('annee').value; if (an) qp.set('annee', an);
+      const d  = document.getElementById('selDept').value; if (d) qp.set('departement', d);
+      const e  = document.getElementById('selEtab').value; if (e) qp.set('etablissement', e);
+      const q  = document.getElementById('q').value.trim(); if (q) qp.set('q', q);
+      window.open('/inspecteur/enseignants/print?' + qp.toString(), '_blank');
+    });
+
+    // 👇 NOUVEAU : Export Excel (appelle /api/inspecteur/enseignants/export.xlsx avec les mêmes filtres)
+    document.getElementById('btnXls').addEventListener('click', () => {
+      const qp = new URLSearchParams();
+      const an = document.getElementById('annee').value; if (an) qp.set('annee', an);
+      const d  = document.getElementById('selDept').value; if (d) qp.set('departement', d);
+      const e  = document.getElementById('selEtab').value; if (e) qp.set('etablissement', e);
+      const q  = document.getElementById('q').value.trim(); if (q) qp.set('q', q);
+      window.location.href = '/api/inspecteur/enseignants/export.xlsx?' + qp.toString();
+    });
+
+    // ajoute automatiquement ?annee=YYYY-YYYY au lien du tab actif
+    (function () {
+      const a = document.getElementById('btnStaff');
+      if (!a) return;
+      function schoolYear(d = new Date()){ const y=d.getFullYear(), m=d.getMonth(); return (m>=7)?`${y}-${y+1}`:`${y-1}-${y}`; }
+      const url = new URL(a.getAttribute('href'), location.origin);
+      if (!url.searchParams.has('annee')) { url.searchParams.set('annee', schoolYear()); a.setAttribute('href', url.pathname + '?' + url.searchParams.toString()); }
+    })();
+
+    load();
+  })();
+  </script>
+</body>
+</html>

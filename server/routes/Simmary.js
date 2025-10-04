@@ -141,56 +141,154 @@ router.get('/kpis', onlyInsp, async (req,res)=>{
 
 /* ──────────────────────────────────────────────────────────────
    3) form-view : agrégé par classe -> disciplines (+ total)
+   - Déduplique: dernier dépôt par (etablissement, animateur)
+   - Fusionne divisions (1ère Année DECO (2) -> 1ère Année DECO)
+   - N’affiche que les disciplines communes à TOUS les dépôts de la classe
+   - “TECHNOLOGIE” seulement en 1ère année et seulement si commune
    ────────────────────────────────────────────────────────────── */
-router.get('/form-view', onlyInsp, async (req,res)=>{
-  const { cycle, specialite, classe } = req.query;
-  if(!cycle || !specialite) return res.status(400).json({ error:'cycle & specialite requis' });
+router.get('/form-view', onlyInsp, async (req, res) => {
+  // 🔒 anti-cache côté client, pour éviter les 304 qui masquent tes modifs
+  res.set('Cache-Control', 'no-store');
 
+  const { cycle, specialite, classe } = req.query;
+  if (!cycle || !specialite) {
+    return res.status(400).json({ error: 'cycle & specialite requis' });
+  }
+
+  // ===== helpers locaux =====
+  const normalizeSpace = s => String(s||'').replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim();
+  const strip = s => normalizeSpace(s).normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+
+  // "1ère Année DECO (2)" -> { base:"1ère Année DECO", division:2 }
+  const splitClassLabel = (label) => {
+    const raw0 = normalizeSpace(label||'');
+    const m = raw0.match(/\s*(?:\(|#|\/|-|\bdiv(?:ision)?\b|\bsection\b|[GgSs])\s*(\d+)\s*\)?\s*$/u);
+    if (!m) return { base: raw0, division: 1 };
+    return { base: raw0.slice(0, m.index).trim(), division: Number(m[1]||'1')||1 };
+  };
+
+  const isFirstYear = (base) => /^(?:1|1ere|1re|premiere)\b/.test(strip(base));
+  const allowKey = (KEY, classBase) => !(KEY === 'TECHNOLOGIE' && !isFirstYear(classBase));
+
+  const setIntersection = (sets) => {
+    if (!sets.length) return new Set();
+    const [first, ...rest] = sets;
+    const out = new Set(first);
+    for (const s of rest) for (const v of Array.from(out)) if (!s.has(v)) out.delete(v);
+    return out;
+  };
+  const bestTs = (doc) => {
+    const ca = doc?.createdAt ? new Date(doc.createdAt).getTime() : 0;
+    const dd = doc?.dateDepot ? new Date(doc.dateDepot).getTime() : 0;
+    let oidTs = 0; try { oidTs = doc?._id?.getTimestamp?.().getTime?.() || 0; } catch(_) {}
+    return Math.max(ca, dd, oidTs);
+  };
+
+  // -------- filtre Mongo
   const f = {
-    inspection: (req.user?.inspection||'').toLowerCase(),
+    inspection: (req.user?.inspection || '').toLowerCase(),
     cycle: String(cycle),
     specialite: String(specialite).toUpperCase(),
     ...periodFilter(req.query)
   };
-  const fiches = await Collecte.find(f).lean();
 
-  // collect classes présentes
+  // 1) Récupération brute
+  const allDocs = await Collecte.find(f).lean();
+
+  // 2) Déduplication: garder le DERNIER par (etablissement|animateur)
+  const latestByKey = new Map();
+  for (const d of allDocs) {
+    const key = `${d.etablissement || '—'}|${d.animateur || '—'}`;
+    const cur = latestByKey.get(key);
+    if (!cur || bestTs(d) > bestTs(cur)) latestByKey.set(key, d);
+  }
+  const fiches = Array.from(latestByKey.values());
+
+  // 3) Découverte des classes (fusion divisions)
   const discovered = new Set();
-  for (const F of fiches) (F.classes||[]).forEach(c=>{
-    const name = String(c.nom||'').trim();
-    if (name) discovered.add(name);
-  });
-  let classNames = Array.from(discovered).sort((a,b)=> a.localeCompare(b));
-  if (classe && !classNames.includes(classe)) classNames.push(classe);
+  for (const F of fiches) {
+    (F.classes || []).forEach(c => {
+      const { base } = splitClassLabel(c?.nom || '');
+      if (base) discovered.add(base);
+    });
+  }
+  let classNames = Array.from(discovered).sort((a,b)=> a.localeCompare(b,'fr'));
+  const classeBase = normalizeSpace(classe||'');
+  if (classeBase && !classNames.includes(classeBase)) classNames.push(classeBase);
 
-  function buildFor(clName){
-    const perDisc = {};
-    const etabs   = new Set();
-    const wanted  = norm(clName).toLowerCase();
+  // 4) Agrégation "commune" + règle “Technologie”
+  function buildFor(classBase) {
+    const perDisc = {}; // UPPER -> { _label, acc }
+    const presentByDepot = new Map(); // depKey -> { set:Set(UPPER), _id:String }
+    const etabs = new Set();
 
-    for (const F of fiches){
-      const cl = (F.classes||[]).find(c => norm(c.nom).toLowerCase() === wanted);
-      if(!cl) continue;
-      etabs.add(F.etablissement||'—');
-      getDiscs(cl).forEach(d=>{
-        const key = norm(d.discipline ?? d.nom ?? d.name);
-        const T = (perDisc[key] ||= emptyTotals());
-        addTotals(T, d);
+    for (const F of fiches) {
+      const depId = String(F._id);
+      const etab = F.etablissement || '—';
+      const ap   = F.animateur    || '—';
+      const depKey = `${etab}|${ap}`;
+
+      // ⚠️ ICI on matche sur la BASE (fusion divisions)
+      const cl = (F.classes || []).find(x => splitClassLabel(x?.nom||'').base === classBase);
+      if (!cl) continue;
+
+      etabs.add(etab);
+      const have = presentByDepot.get(depKey)?.set || new Set();
+
+      getDiscs(cl).forEach(d => {
+        const raw = String(d.discipline ?? d.nom ?? d.name ?? '').trim();
+        if (!raw) return;
+        const KEY = raw.toUpperCase();
+
+        if (!perDisc[KEY]) perDisc[KEY] = { _label: raw, acc: emptyTotals() };
+        addTotals(perDisc[KEY].acc, d);
+        have.add(KEY);
       });
+
+      presentByDepot.set(depKey, { set: have, _id: depId });
     }
 
+    // Intersection des disciplines présentes dans TOUS les dépôts de la classe
+    const commonUpper = setIntersection(Array.from(presentByDepot.values()).map(v => v.set));
+
+    // Lignes affichées : communes ET autorisées par la règle "Technologie"
     const rows = Object.entries(perDisc)
-      .map(([nom,T])=> ({ nom, ...packTotals(T) }))
-      .sort((a,b)=> a.nom.localeCompare(b.nom));
+      .filter(([KEY]) => commonUpper.has(KEY) && allowKey(KEY, classBase))
+      .map(([KEY, obj]) => ({ nom: obj._label, ...packTotals(obj.acc) }))
+      .sort((a,b)=> String(a.nom).localeCompare(String(b.nom),'fr'));
 
-    // total classe
-    const total = Object.values(perDisc).reduce((acc,T)=>{ addTotals(acc,T); return acc; }, emptyTotals());
+    // Total = sur ce qui est affiché
+    const totals = rows.reduce((acc, r) => {
+      acc.Hd+=r.Hd; acc.Hf+=r.Hf; acc.Lp+=r.Lp; acc.Lf+=r.Lf; acc.Ldp+=r.Ldp; acc.Ldf+=r.Ldf;
+      acc.Tp+=r.Tp; acc.Tf+=r.Tf; acc.Tdp+=r.Tdp; acc.Tdf+=r.Tdf; acc.Comp+=r.Comp; acc.M10+=r.M10; acc.EffT+=r.EffT; acc.EffP+=r.EffP;
+      return acc;
+    }, emptyTotals());
 
-    return { classe: clName, etablissements: etabs.size, disciplines: rows, total: packTotals(total) };
+    // Incohérences : non communes OU interdites (ex: Technologie hors 1ère)
+    const nonCommonByDepot = Array.from(presentByDepot.entries())
+      .map(([depKey, info]) => {
+        const [etablissement, ap] = depKey.split('|');
+        const issues = Array.from(info.set)
+          .filter(KEY => !commonUpper.has(KEY) || !allowKey(KEY, classBase))
+          .map(KEY => perDisc[KEY]?._label || KEY);
+        return issues.length ? { etablissement, ap, depositId: info._id, nonCommon: issues } : null;
+      })
+      .filter(Boolean);
+
+    return {
+      classe: classBase,
+      etablissements: etabs.size,
+      disciplines: rows,
+      total: packTotals(totals),
+      nonCommonByDepot
+    };
   }
 
-  if (classe) return res.json(buildFor(classe));
-  res.json(classNames.map(buildFor));
+  // Petit header debug pour vérifier côté Réseau que c’est bien ce code qui répond
+  res.set('X-Debug-FormView', 'v4-intersection+splitClass+tech-filter');
+
+  if (classeBase) return res.json(buildFor(classeBase));
+  return res.json(classNames.map(buildFor));
 });
 
 /* ──────────────────────────────────────────────────────────────

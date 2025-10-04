@@ -26,14 +26,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_room_client
 CREATE INDEX IF NOT EXISTS idx_room_ts ON messages(room, ts DESC);
 `);
 
-const insertMsg = db.prepare(`
+const insertMsg   = db.prepare(`
   INSERT OR IGNORE INTO messages
   (room, author_id, author_name, text, ts, client_msg_id,
    reply_to_id, reply_to_from, reply_to_text)
   VALUES (@room, @author_id, @author_name, @text, @ts, @client_msg_id,
           @reply_to_id, @reply_to_from, @reply_to_text)
 `);
-
 const getById     = db.prepare(`SELECT * FROM messages WHERE id = ?`);
 const getByClient = db.prepare(`SELECT * FROM messages WHERE room = ? AND client_msg_id = ?`);
 const lastNAsc    = db.prepare(`
@@ -42,10 +41,12 @@ const lastNAsc    = db.prepare(`
   FROM (SELECT * FROM messages WHERE room = ? ORDER BY ts DESC LIMIT ?) 
   ORDER BY ts ASC
 `);
+const delByRoom   = db.prepare(`DELETE FROM messages WHERE room = ?`);
 
 module.exports = {
   insert(msg){ return insertMsg.run(msg); },
   getById(id){ return getById.get(id); },
   getByClient(room, cmid){ return getByClient.get(room, cmid); },
-  listLast(room, limit=200){ return lastNAsc.all(room, limit); }
+  listLast(room, limit=200){ return lastNAsc.all(room, limit); },
+  clearRoom(room){ return delByRoom.run(room); } // 👈 AJOUT
 };

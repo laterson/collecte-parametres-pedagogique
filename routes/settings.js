@@ -5,7 +5,6 @@ const Settings   = require('../models/Settings');
 const Baseline   = require('../models/Baseline');
 const Catalog    = require('../models/DisciplineCatalog');
 const SpecPreset = require('../models/SpecPreset');
-const { isAuth } = require('../middleware/authsuupr');
 
 // Fallback local (si pas de preset Admin)
 const CLASSES_BY_SPEC = {
@@ -14,7 +13,6 @@ const CLASSES_BY_SPEC = {
   AF2 : ['2nde AF2','1ère AF2','Tle AF2'],
   AF3 : ['2nde AF3','1ère AF3','Tle AF3']
 };
-router.use(isAuth);
 
 const CLASS_LEVELS = {
   premier: ['1ère année','2ème année','3ème année','4ème année'],
@@ -27,14 +25,20 @@ function canonClasses(cycle, specialite){
 }
 
 // petit util
-const N = v => Number(v || 0);
+const N = v => {
+   const n = Number(v);
+   return Number.isFinite(n) ? Math.max(0, n) : 0;
+};
 const S = v => String(v || '').trim();
+// force en tableau si on reçoit un objet unique (évite les CastError)
+const arrify = (x) => Array.isArray(x) ? x : (x && typeof x === 'object' ? [x] : []);
+
 
 /* ========= PARAMÈTRES ÉTABLISSEMENT ========= */
 // Récupérer les paramètres (dernier doc de l’année si précisée)
 router.get('/', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+    const u = req.user || {};
     const etab = S(u.etab);
     const insp = S(u.inspection || 'artsplastiques').toLowerCase();
     const annee = S(req.query.annee);
@@ -45,8 +49,16 @@ router.get('/', async (req, res, next) => {
     if (annee) q.annee = annee;
 
     const doc = await Settings.findOne(q).sort({ createdAt: -1 }).lean();
-    if (!doc) return res.status(404).json({ error: 'not found' });
-    res.json(doc);
+   // Optionnel : renvoyer un squelette vide plutôt qu’un 404
+   if (!doc) return res.json({
+   inspection: insp, etablissement: etab, annee,
+  cycle: '', specialite: '',
+ effectifs: [], 
+ staff: [], 
+ staffFiles: [], 
+ disciplinesByClass: []
+ });
+   return res.json(doc);
   } catch (e) { next(e); }
 });
 
@@ -54,78 +66,58 @@ router.get('/', async (req, res, next) => {
 // Créer / Mettre à jour (upsert) pour l’AP connecté — compatible divisions
 router.post('/', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+    const u = req.user || {};
     const etab = S(u.etab);
     const insp = S(u.inspection || 'artsplastiques').toLowerCase();
     const annee = S(req.body?.annee);
-    const cycle = S(req.body?.cycle);
-    const specialite = S(req.body?.specialite).toUpperCase();
+    const staffIn = arrify(req.body?.staff);
 
-    if (!etab)  return res.status(403).json({ error: 'Profil AP incomplet (etablissement manquant)' });
-    if (!annee) return res.status(400).json({ error: 'annee requise' });
+    // Vérifier si les données du personnel sont au format complet
+    const isStaffV2 = staffIn.some(s =>
+      s?.matricule || s?.telephone || s?.categorie || s?.prenom ||
+      s?.sexe || s?.dateNaissance || s?.dateEntreeFP || s?.dateAffectation ||
+      s?.regionOrigine || s?.departementOrigine || s?.arrondissementOrigine ||
+      s?.posteOccupe || s?.rangPoste
+    );
 
-    // === 2 formats possibles ===
-    // A) NOUVEAU: body.classes = [{ canonicalClass, divisions, effectifs:[{divisionIndex, filles, garcons}], disciplines:[...] }]
-    // B) ANCIEN : body.effectifs = [{ classe, filles, garcons }] (+ body.staff = [...])
-    const CLASSES_IN = Array.isArray(req.body?.classes) ? req.body.classes : null;
+    // Traiter les données du personnel
+    const stf = staffIn.map(s => {
+      const base = {
+        nom: S(s?.nom),
+        grade: S(s?.grade),
+        matiere: S(s?.matiere),
+        statut: S(s?.statut),
+        obs: S(s?.obs),
+        classes: Array.isArray(s?.classes) ? s.classes.map(S).filter(Boolean) : [],
+        disciplines: Array.isArray(s?.disciplines) ? s.disciplines.map(S).filter(Boolean) : []
+      };
 
-    let effectifsOut = [];
-    let disciplinesByClass = [];
-    if (CLASSES_IN && CLASSES_IN.length) {
-      for (const C of CLASSES_IN) {
-        const cname = S(C.canonicalClass);
-        const divN  = Math.max(1, Number(C.divisions || 1));
-        const eff   = Array.isArray(C.effectifs) ? C.effectifs : [];
-        for (let i = 1; i <= divN; i++) {
-          const row = eff.find(x => Number(x.divisionIndex) === i) || {};
-          effectifsOut.push({
-            classe: cname,
-            divisionIndex: i,
-            filles : N(row.filles),
-            garcons: N(row.garcons)
-          });
-        }
-        const dlist = Array.isArray(C.disciplines) ? C.disciplines.map(S).filter(Boolean) : [];
-        disciplinesByClass.push({ classe: cname, disciplines: Array.from(new Set(dlist)) });
-      }
-    } else {
-      // Compat ancien format: pas de divisions → on crée divisionIndex=1
-      const effectifs = Array.isArray(req.body?.effectifs) ? req.body.effectifs : [];
-      effectifsOut = effectifs
-        .map(c => ({
-          classe: S(c.classe),
-          divisionIndex: 1,
-          filles: N(c.filles),
-          garcons: N(c.garcons)
-        }))
-        .filter(c => c.classe);
-      // Pas d’info disciplines par classe dans l’ancien format
-      disciplinesByClass = [];
-    }
+      if (!isStaffV2) return base;
 
-    // Fichier(s) du personnel (optionnel)
-    const staffIn   = Array.isArray(req.body?.staff)      ? req.body.staff      : [];
-    const staffFiles= Array.isArray(req.body?.staffFiles) ? req.body.staffFiles : [];
-    const stf = staffIn.map(s => ({
-      nom       : S(s.nom),
-      grade     : S(s.grade),
-      matiere   : S(s.matiere),
-      statut    : S(s.statut),
-      obs       : S(s.obs),
-      classes    : Array.isArray(s.classes)     ? s.classes.map(S).filter(Boolean)     : [],
-      disciplines: Array.isArray(s.disciplines) ? s.disciplines.map(S).filter(Boolean) : []
-    }));
+      return {
+        ...base,
+        prenom: S(s?.prenom),
+        matricule: S(s?.matricule),
+        categorie: S(s?.categorie),
+        sexe: S(s?.sexe),
+        dateNaissance: S(s?.dateNaissance),
+        telephone: S(s?.telephone),
+        regionOrigine: S(s?.regionOrigine),
+        departementOrigine: S(s?.departementOrigine),
+        arrondissementOrigine: S(s?.arrondissementOrigine),
+        posteOccupe: S(s?.posteOccupe),
+        rangPoste: S(s?.rangPoste),
+        dateEntreeFP: S(s?.dateEntreeFP),
+        dateAffectation: S(s?.dateAffectation)
+      };
+    });
 
+    // Mettre à jour les paramètres dans la base de données
     const filter = { inspection: insp, etablissement: etab, annee };
     const update = {
       $set: {
-        cycle: cycle || undefined,
-        specialite: specialite || undefined,
-        effectifs: effectifsOut,           // ← désormais par division
+        effectifs: req.body.effectifs || [],
         staff: stf,
-        staffFiles,                        // ← optionnel pour stocker les fichiers personnels
-        // Ajouté : mapping disciplines par classe (si fourni en nouveau format)
-        ...(disciplinesByClass.length ? { disciplinesByClass } : {})
       },
       $setOnInsert: { inspection: insp, etablissement: etab, annee }
     };
@@ -135,17 +127,18 @@ router.post('/', async (req, res, next) => {
   } catch (e) {
     if (e && e.code === 11000) {
       return res.status(409).json({
-        error: 'Doublon de paramètres pour cet établissement et cette année (index uniq_insp_etab_annee). Supprime l’ancien index et/ou les doublons puis réessaie.'
+        error: 'Doublon de paramètres pour cet établissement et cette année (index uniq_insp_etab_annee). Supprimez l’ancien index et/ou les doublons puis réessayez.'
       });
     }
     next(e);
   }
 });
 
+
 /* ========= RESET GLOBAL (année) ========= */
 router.delete('/reset', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+   const u = req.user || {};
     const etab = S(u.etab);
     const insp = S(u.inspection || 'artsplastiques').toLowerCase();
     const annee = S(req.query.annee || req.body?.annee);
@@ -161,7 +154,7 @@ router.delete('/reset', async (req, res, next) => {
 /* ========= PRESETS : classes par spé ========= */
 router.get('/presets', async (req, res, next) => {
   try {
-    const insp = S((req.session.user || {}).inspection || 'artsplastiques').toLowerCase();
+    const insp = S((req.user || {}).inspection || 'artsplastiques').toLowerCase();
     const cycle = S(req.query.cycle);
     const specialite = S(req.query.specialite).toUpperCase();
     if (!cycle || !specialite) return res.status(400).json({ error: 'cycle et specialite requis' });
@@ -175,7 +168,7 @@ router.get('/presets', async (req, res, next) => {
 // Renvoie les classes canoniques + 1 division par défaut et la liste des disciplines actives
 router.get('/effectifs/defaults', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+   const u = req.user || {};
     const etab = S(u.etab);
     const insp = S(u.inspection || 'artsplastiques').toLowerCase();
     const cycle = S(req.query.cycle);
@@ -210,7 +203,7 @@ router.get('/effectifs/defaults', async (req, res, next) => {
 // defaults = classes (preset admin) × disciplines actives du catalogue
 router.get('/baselines/defaults', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+    const u = req.user || {};
     const insp = S(u.inspection || 'artsplastiques').toLowerCase();
     const cycle = S(req.query.cycle);
     const specialite = S(req.query.specialite).toUpperCase();
@@ -244,7 +237,7 @@ router.get('/baselines/defaults', async (req, res, next) => {
 // lire baselines ; sinon defaults recalculés
 router.get('/baselines', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+    const u = req.user || {};
     const cycle = S(req.query.cycle);
     const specialite = S(req.query.specialite).toUpperCase();
     const annee = S(req.query.annee);
@@ -281,7 +274,7 @@ router.get('/baselines', async (req, res, next) => {
 // upsert baselines
 router.post('/baselines', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+   const u = req.user || {};
     const annee = S(req.body?.annee);
     const cycle = S(req.body?.cycle);
     const specialite = S(req.body?.specialite).toUpperCase();
@@ -314,7 +307,7 @@ router.post('/baselines', async (req, res, next) => {
       }));
 
     if (!ops.length) return res.json({ message: 'Aucune ligne valide' });
-    await Baseline.bulkWrite(ops);
+   await Baseline.bulkWrite(ops, { ordered: false });
     res.json({ message: `${ops.length} baseline(s) enregistrée(s)` });
   } catch (e) { next(e); }
 });
@@ -322,7 +315,7 @@ router.post('/baselines', async (req, res, next) => {
 // suppression baselines
 router.delete('/baselines', async (req, res, next) => {
   try {
-    const u = req.session.user || {};
+  const u = req.user || {};
     const annee = S((req.query.annee || req.body?.annee));
     const cycle = S((req.query.cycle || req.body?.cycle));
     const specialite = S((req.query.specialite || req.body?.specialite)).toUpperCase();
@@ -336,3 +329,5 @@ router.delete('/baselines', async (req, res, next) => {
 });
 
 module.exports = router;
+
+

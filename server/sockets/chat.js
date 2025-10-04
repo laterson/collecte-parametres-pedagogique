@@ -1,51 +1,56 @@
 // server/sockets/chat.js
-// Chat temps réel "type WhatsApp" — version PERSISTANTE (SQLite).
-// On garde salons/presence/typing ; l'historique est stocké en base.
+// Chat temps réel (WhatsApp-like) persistant via SQLite (db/chat.js)
 
 const chatStore = require('../../db/chat'); // adapte le chemin si besoin
 
-module.exports = function attachChat(io) {
-  // Set pour la présence (par salon)
-  const ROOMS = new Map(); // room -> Set(socketId)
+// clé unique du salon par inspection
+const roomKey = (insp) => `insp:${String(insp || 'artsplastiques').toLowerCase()}`;
 
-  const roomKey = (inspection) => `insp:${String(inspection || 'artsplastiques').toLowerCase()}`;
-  const ensureSet = (key) => { if (!ROOMS.has(key)) ROOMS.set(key, new Set()); return ROOMS.get(key); };
+function attachChat(io) {
+  // suivi présence : room -> Set(socketId)
+  const ROOMS = new Map();
+  const ensureSet = (key) => {
+    if (!ROOMS.has(key)) ROOMS.set(key, new Set());
+    return ROOMS.get(key);
+  };
 
   io.on('connection', (socket) => {
-    // Infos utilisateur passées par socket.io client: auth.user
+    // infos utilisateur fournies par le client socket.io (auth.user)
     const u = socket.handshake?.auth?.user || {};
     socket.data.user = {
-      nom: String(u.nom || '—'),
-      etab: String(u.etab || ''),
-      role: String(u.role || 'anim'),
+      id:         String(u.id || ''),
+      nom:        String(u.nom || '—'),
+      etab:       String(u.etab || ''),
+      role:       String(u.role || 'anim'),
       inspection: String(u.inspection || 'artsplastiques'),
     };
 
-    // Rejoindre le salon de l'inspection
+    // ===== Rejoindre un salon & envoyer l'historique =====
     socket.on('chat:join', (payload = {}) => {
       const insp = String(payload.inspection || socket.data.user.inspection || '').toLowerCase();
-      const key = roomKey(insp);
+      const key  = roomKey(insp);
 
       socket.join(key);
       ensureSet(key).add(socket.id);
 
-      // Historique persistant
-      const history = chatStore.listLast(key, 200).map(row => ({
-        id: row.id,
-        from: row.from,
+      // historique persistant (limité à 200)
+      // db/chat.listLast renvoie déjà {id, from, text, ts, reply_to_*}
+      const history = chatStore.listLast(key, 200).map((row) => ({
+        id:  row.id,
+        from: row.from ?? row.author_name,   // compat selon SELECT
         text: row.text,
-        ts: row.ts,
-        ...(row.reply_to_id || row.reply_to_text ? {
-          replyTo: { id: row.reply_to_id, from: row.reply_to_from, text: row.reply_to_text }
-        } : {})
+        ts:   row.ts,
+        ...(row.reply_to_id || row.reply_to_text
+            ? { replyTo: { id: row.reply_to_id, from: row.reply_to_from, text: row.reply_to_text } }
+            : {}),
       }));
       socket.emit('chat:history', history);
 
-      // Présence
+      // présence
       io.to(key).emit('presence:update', ensureSet(key).size);
     });
 
-    // Déconnexion → présence
+    // ===== Déconnexion → maj présence =====
     socket.on('disconnect', () => {
       ROOMS.forEach((set, key) => {
         if (set.delete(socket.id)) {
@@ -54,61 +59,85 @@ module.exports = function attachChat(io) {
       });
     });
 
-    // Indicateur "X écrit…"
+    // ===== Indicateur "X écrit…" =====
     socket.on('chat:typing', (p = {}) => {
       const insp = String(p.inspection || socket.data.user.inspection || '').toLowerCase();
-      const key = roomKey(insp);
+      const key  = roomKey(insp);
       socket.to(key).emit('chat:typing', {
         from: socket.data.user.nom,
         typing: !!p.typing,
       });
     });
 
-    // Envoi d’un message
+    // ===== Envoi d’un message =====
     socket.on('chat:send', (p = {}, ack) => {
       try {
         const insp = String(p.inspection || socket.data.user.inspection || '').toLowerCase();
-        const key = roomKey(insp);
+        const key  = roomKey(insp);
 
-        const msgToStore = {
-          room: key,
-          author_id:   u.id || null,
-          author_name: socket.data.user.nom,
-          text:        String(p.text || '').slice(0, 5000),
-          ts:          Number(p.ts) || Date.now(),
+        const rawText = String(p.text || '');
+        const text    = rawText.slice(0, 5000).trim();
+        if (!text) {
+          ack && ack({ error: 'empty_message' });
+          return;
+        }
+
+        // enregistrement en base (dédoublonné par client_msg_id)
+        const toStore = {
+          room:          key,
+          author_id:     socket.data.user.id || null,
+          author_name:   socket.data.user.nom,
+          text,
+          ts:            Number(p.ts) || Date.now(),
           client_msg_id: p.client_msg_id || null,
-          reply_to_id:   p.replyTo?.id   || null,
-          reply_to_from: p.replyTo?.from || null,
-          reply_to_text: p.replyTo?.text || null
+          reply_to_id:   p?.replyTo?.id   || null,
+          reply_to_from: p?.replyTo?.from || null,
+          reply_to_text: p?.replyTo?.text || null,
         };
 
-        const info = chatStore.insert(msgToStore);
+        const info = chatStore.insert(toStore);
 
-        // Récupérer la ligne insérée (ou l'existante si doublon client_msg_id)
-        let row;
-        if (info.changes > 0) {
+        // on relit la ligne (insertée ou existante si IGNORE)
+        let row = null;
+        if (info && info.changes > 0) {
           row = chatStore.getById(info.lastInsertRowid);
-        } else if (msgToStore.client_msg_id) {
-          row = chatStore.getByClient(key, msgToStore.client_msg_id);
+        } else if (toStore.client_msg_id) {
+          row = chatStore.getByClient(key, toStore.client_msg_id);
         }
         if (!row) throw new Error('insert_failed');
 
         const out = {
-          id: row.id,
-          from: row.author_name,
+          id:  row.id,
+          from: row.author_name || socket.data.user.nom,
           text: row.text,
-          ts: row.ts,
-          ...(row.reply_to_id || row.reply_to_text ? {
-            replyTo: { id: row.reply_to_id, from: row.reply_to_from, text: row.reply_to_text }
-          } : {})
+          ts:   row.ts,
+          ...(row.reply_to_id || row.reply_to_text
+              ? { replyTo: { id: row.reply_to_id, from: row.reply_to_from, text: row.reply_to_text } }
+              : {}),
         };
 
         io.to(key).emit('chat:new', out);
         ack && ack({ ok: true, id: out.id });
       } catch (e) {
-        socket.emit('chat:error', { message: e?.message || 'send failed' });
-        ack && ack({ error: e?.message || 'send failed' });
+        socket.emit('chat:error', { message: e?.message || 'send_failed' });
+        ack && ack({ error: e?.message || 'send_failed' });
       }
     });
   });
+}
+
+/**
+ * Purge programmée depuis une route HTTP (ex: /api/chat/reset)
+ * Efface l’historique SQLite de l’inspection et notifie les clients.
+ * Utilisation côté server.js :
+ *   const attachChat = require('./server/sockets/chat');
+ *   ...
+ *   attachChat.purge(io, inspectionString);
+ */
+attachChat.purge = function purge(io, inspection) {
+  const key  = roomKey(inspection);
+  try { chatStore.clearRoom(key); } catch (_) {}
+  try { io.to(key).emit('chat:history', []); } catch (_) {}
 };
+
+module.exports = attachChat;

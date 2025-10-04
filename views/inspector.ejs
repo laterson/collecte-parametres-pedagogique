@@ -156,6 +156,24 @@
   text-transform:uppercase; user-select:none;
 }
 
+/* pager dépôts */
+.pager{display:flex;align-items:center;gap:8px;margin-top:8px}
+.pager .btn{padding:4px 10px}
+.pager .muted{font-size:12px}
+
+/* toast léger */
+.toast {
+  position: fixed; right: 14px; bottom: 14px; z-index: 9999;
+  background:#111827; color:#fff; padding:10px 12px;
+  border-radius:10px; font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,.2);
+  opacity:0; transform: translateY(8px); transition:.2s;
+}
+.toast.show{ opacity:1; transform: translateY(0); }
+.text-center{ text-align:center; }
+.text-end{ text-align:right; }
+
+
+.btn.mini{ padding:2px 6px; font-size:11px; border-radius:999px }
   </style>
 </head>
 <body>
@@ -167,6 +185,7 @@
       <a href="/inspector" class="btn primary">Synthèse</a>
       <a href="/inspector/carte" class="btn">Carte scolaire</a>
       <a href="/fichiers" class="btn">Échanges</a>
+        <a id="btnStaff" href="/inspecteur/enseignants" class="btn">Fichier personnel</a>
       <form action="/auth/logout" method="post" style="display:inline"><button class="btn">Déconnexion</button></form>
     </div>
   </header>
@@ -244,6 +263,8 @@
           <div class="row">
             <button class="btn soft" id="btnExportMap">Export CSV</button>
             <button class="btn primary" id="btnPrintMap">Imprimer</button>
+            <button class="btn" id="btnPurgeCards" title="Supprimer des cartes scolaires">Purger cartes…</button>
+            
           </div>
         </div>
         <div id="schoolMap" style="margin-top:8px" class="empty">Aucune donnée (sélectionne un périmètre ou laisse “Toute la région”).</div>
@@ -275,7 +296,9 @@
         <div class="w-name"><%= (user && user.nom) || '—' %> <span class="inspTag">(Inspecteur)</span></div>
         <div class="w-sub" id="presence">Connectés : —</div>
       </div>
-      <div style="margin-left:auto"><button class="btn" id="chatRefresh" type="button">↻</button></div>
+      <div style="margin-left:auto"><button class="btn" id="chatRefresh" type="button">↻</button><% if (user && user.role === 'insp') { %>
+      <button class="btn" id="chatResetBtn" type="button" title="Purger l’historique du salon">🗑️</button>
+    <% } %></div>
     </div>
 
     <div id="msgs" class="w-msgs"></div>
@@ -304,16 +327,25 @@
 
 
       <!-- DEPOTS (mailbox) -->
-      <div id="paneDepots" style="display:none;padding:10px">
-        <div class="row" style="margin-bottom:6px">
-          <span class="muted">Filtré par la période & la sélection à gauche.</span>
-          <button class="btn soft" id="btnRefreshDepots" style="margin-left:auto">Rafraîchir</button>
-        </div>
-        <div id="mailList" class="scroll"></div>
-        <div id="mailEmpty" class="empty" style="display:none">Aucun dépôt trouvé pour ce périmètre.</div>
-      </div>
-    </aside>
+     <div id="paneDepots" style="display:none;padding:10px">
+  <div class="row" style="margin-bottom:6px">
+    <span class="muted">Filtré par la période & la sélection à gauche.</span>
+    <button class="btn soft" id="btnRefreshDepots" style="margin-left:auto">Rafraîchir</button>
   </div>
+  <div id="mailList" class="scroll"></div>
+  <div id="mailEmpty" class="empty" style="display:none">Aucun dépôt trouvé pour ce périmètre.</div>
+
+  <!-- PAGER -->
+  <div class="pager">
+    <button class="btn" id="depPrev">◀</button>
+    <button class="btn" id="depNext">▶</button>
+    <span class="muted" id="depInfo">—</span>
+    <select id="depLimit" class="select" title="Nombre par page">
+      <option>10</option><option selected>20</option><option>50</option><option>100</option>
+    </select>
+  </div>
+</div>
+
 
   <!-- ====== Overlay consultation d'un dépôt / Détails établissement ====== -->
   <div id="ov" class="overlay">
@@ -338,6 +370,43 @@
     </div>
   </div>
 
+<!-- ===== Modale Purge Cartes ===== -->
+<div id="purgeModal" class="overlay" style="display:none">
+  <div class="panel">
+    <div class="row" style="align-items:center;margin-bottom:4px">
+      <h3 style="margin:0">Purger des cartes scolaires</h3>
+      <button id="purgeClose" class="closeX">Fermer</button>
+    </div>
+
+    <div class="row" style="gap:8px;margin-bottom:8px">
+      <input id="purgeYear" class="select" type="text" placeholder="Année ex: 2025-2026" style="width:170px">
+      <input id="purgeFilter" class="select" type="text" placeholder="Filtrer établissement…" style="flex:1">
+      <label><input id="purgeChkAll" type="checkbox"> Tout cocher</label>
+      <button id="purgeReload" class="btn soft">Recharger</button>
+      <button id="purgeDo" class="btn primary">Supprimer la sélection</button>
+    </div>
+
+    <div style="overflow:auto;max-height:60vh">
+      <table id="purgeTable" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#f8fafc">
+            <th style="text-align:center">Sel.</th>
+            <th>Établissement</th>
+            <th>Année</th>
+            <th>Cycle</th>
+            <th>Spécialité</th>
+            <th>Version</th>
+            <th>Reçue le</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="purgeEmpty" class="empty" style="display:none;margin-top:8px">Aucune carte trouvée.</div>
+    </div>
+  </div>
+</div>
+
+
   <script src="/socket.io/socket.io.js"></script>
   <script>
     /* eslint-env browser */
@@ -347,7 +416,7 @@
     const pct=(d,n)=> d>0 ? (n/d*100) : 0;
     const fmt=v=> (isFinite(v)&&v>0) ? v.toFixed(1)+'%' : '0%';
     const heat=v=> v>=75?'heat-ok':(v>=50?'heat-warn':'heat-bad');
-
+let GLOBAL_KPI = null;
     function printElement(el, title='Impression'){
       const w=window.open('','_blank','width=1200,height=800');
       const style=document.querySelector('style').outerHTML;
@@ -366,6 +435,21 @@
       const a=document.createElement('a'); a.href=u; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
     }
 
+    function toast(msg){
+  const t = document.getElementById('toast');
+  if (!t) return alert(msg);
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 1600);
+}
+// ===== Année scolaire depuis l'URL =====
+const URL_QS = new URLSearchParams(location.search);
+const ANNEE  = URL_QS.get('annee') || '';
+
+// QS commun : période (annuel/éval/tri) + année (si fournie)
+function currentQS(){
+  return { ...currentPeriodQS(), ...(ANNEE ? { annee: ANNEE } : {}) };
+}
     // ===== Période
     const period=document.getElementById('period'), selEval=document.getElementById('selEval'), selTri=document.getElementById('selTri');
     function currentPeriodQS(){ const m=period.value; if(m==='eval') return { evaluation:selEval.value }; if(m==='tri') return { trimestre:selTri.value }; return {}; }
@@ -386,48 +470,111 @@
     // --- API Carte scolaire
     async function loadCarteInspection(filter, qs){
       const q = new URLSearchParams({ ...(filter||{}), ...(qs||{}) }).toString();
-      return api('/api/carte/inspection?'+q);
+      return api('/api/inspecteur/carte/inspection?'+q);
     }
-    async function openEtabDetails(etab){
-      const d = await api('/api/carte/etab?etablissement='+encodeURIComponent(etab));
-      ovTitle.textContent = `Détails — ${esc(d?.meta?.etablissement||etab)}`;
-      ovMeta.innerHTML = `<div><strong>Cycle:</strong> ${esc(d?.meta?.cycle||'—')} • <strong>Spécialité:</strong> ${esc(d?.meta?.specialite||'—')} • <strong>Année:</strong> ${esc(d?.meta?.annee||'—')}</div>`;
+   async function openEtabDetails(etab, annee){
+  const etabClean = htmlUnescape(etab);
+  // 1) On récupère UNIQUEMENT les dernières cartes par (cycle, spécialité) pour cet établissement et cette année
+  const qsLatest = new URLSearchParams({ etablissement: etabClean, ...(annee ? { annee } : {}) });
+  const latest = await api('/api/inspecteur/carte-scolaire/latest?' + qsLatest.toString())
+                .catch(()=>({ rows: [] }));
 
-      const effRows = (d?.effectifs||[]).map(e=>`
-        <tr>
-          <td>${esc(e.classe||'')}</td>
-          <td>${Number(e.filles)||0}</td>
-          <td>${Number(e.garcons)||0}</td>
-          <td><b>${(Number(e.filles)||0)+(Number(e.garcons)||0)}</b></td>
-        </tr>`).join('');
+  const rows = Array.isArray(latest?.rows) ? latest.rows : [];
 
-      const staffRows = (d?.staff||[]).map(p=>`
-        <tr>
-          <td>${esc(p.nom||'')}</td>
-          <td>${esc(p.grade||'')}</td>
-          <td>${esc(p.matiere||'')}</td>
-          <td>${esc(p.statut||'')}</td>
-          <td>${(p.classes||[]).map(c=>`<span class="badge">${esc(c)}</span>`).join(' ')||'—'}</td>
-          <td>${(p.disciplines||[]).map(x=>`<span class="badge">${esc(x)}</span>`).join(' ')||'—'}</td>
-          <td>${esc(p.obs||'')}</td>
-        </tr>`).join('');
+  // 2) On agrège les données "propres" (latest only)
+  const allStaff = [];
+  const effMap   = new Map(); // classe -> {classe, filles, garcons}
 
-      paneOverview.innerHTML = `
-        <h3 style="margin:8px 0 6px">Effectifs par classe</h3>
-        <table>
-          <thead><tr><th>Classe</th><th>Filles</th><th>Garçons</th><th>Total</th></tr></thead>
-          <tbody>${effRows || '<tr><td colspan="4" class="muted">—</td></tr>'}</tbody>
-        </table>
-        <h3 style="margin:12px 0 6px">Personnel enseignant (${(d?.staff||[]).length})</h3>
-        <table>
-          <thead><tr><th>Nom</th><th>Grade</th><th>Matière</th><th>Statut</th><th>Classes</th><th>Disciplines</th><th>Obs.</th></tr></thead>
-          <tbody>${staffRows || '<tr><td colspan="7" class="muted">—</td></tr>'}</tbody>
-        </table>
-      `;
-      rawJson.textContent = JSON.stringify(d||{}, null, 2);
-      setOvTab('overview');
-      ov.style.display='flex';
+  for (const row of rows){
+    // selon ton backend: les cartes ont souvent `data` ou des champs plats
+    const src = row?.data || row;
+
+    // effectifs
+    const eff = Array.isArray(src?.effectifs) ? src.effectifs : [];
+    for (const e of eff){
+      const k = String(e?.classe || '').trim();
+      const f = Number(e?.filles)  || 0;
+      const g = Number(e?.garcons) || 0;
+      const prev = effMap.get(k) || { classe:k, filles:0, garcons:0 };
+      prev.filles  += f;
+      prev.garcons += g;
+      effMap.set(k, prev);
     }
+
+    // staff
+    const staff = Array.isArray(src?.staff) ? src.staff
+                : Array.isArray(src?.enseignants) ? src.enseignants
+                : Array.isArray(src?.personnel) ? src.personnel
+                : Array.isArray(src?.teachers) ? src.teachers
+                : [];
+    allStaff.push(...staff);
+  }
+
+  // 3) Dédoublonnage staff (clé composite robuste)
+  const staffDedup = Array.from(new Map(allStaff.map(p=>{
+    const key = [
+      (p.nom||'').trim().toLowerCase(),
+      (p.matiere||'').trim().toLowerCase(),
+      (p.grade||'').trim().toLowerCase(),
+      (p.statut||p.status||'').trim().toLowerCase()
+    ].join('|');
+    return [key, p];
+  })).values());
+
+  // 4) Rendu
+ ovTitle.textContent = `Détails — ${etabClean}`;
+  ovMeta.innerHTML = `<div><strong>Année:</strong> ${esc(annee||'—')}</div>`;
+
+  const effectifs = Array.from(effMap.values()).sort((a,b)=> (a.classe||'').localeCompare(b.classe||''));
+
+  const effRows = effectifs.map(e=>`
+    <tr>
+      <td>${esc(e.classe||'')}</td>
+      <td>${Number(e.filles)||0}</td>
+      <td>${Number(e.garcons)||0}</td>
+      <td><b>${(Number(e.filles)||0)+(Number(e.garcons)||0)}</b></td>
+    </tr>`).join('');
+
+  const staffRows = staffDedup.map(p=>`
+    <tr>
+      <td>${esc(p.nom||'')}</td>
+      <td>${esc(p.grade||'')}</td>
+      <td>${esc(p.matiere||'')}</td>
+      <td>${esc(p.statut||p.status||'')}</td>
+      <td>${(p.classes||[]).map(c=>`<span class="badge">${esc(c)}</span>`).join(' ')||'—'}</td>
+      <td>${(p.disciplines||[]).map(x=>`<span class="badge">${esc(x)}</span>`).join(' ')||'—'}</td>
+      <td>${esc(p.obs||'')}</td>
+    </tr>`).join('');
+
+  // panneau
+  const cyclesSpecs = rows.map(r=>{
+    const m = r?.meta || r?.data?.meta || {};
+    return [m.cycle, (m.specialite||'').toString().toUpperCase()].filter(Boolean).join(' / ');
+  }).filter(Boolean);
+
+  paneOverview.innerHTML = `
+    <div class="muted" style="margin-bottom:8px">
+      ${rows.length} carte(s) la plus récente par couple (cycle, spécialité) — ${esc(cyclesSpecs.join(', ')||'—')}
+    </div>
+    <h3 style="margin:8px 0 6px">Effectifs par classe</h3>
+    <table>
+      <thead><tr><th>Classe</th><th>Filles</th><th>Garçons</th><th>Total</th></tr></thead>
+      <tbody>${effRows || '<tr><td colspan="4" class="muted">—</td></tr>'}</tbody>
+    </table>
+    <h3 style="margin:12px 0 6px">Personnel enseignant (${staffDedup.length})</h3>
+    <table>
+      <thead><tr><th>Nom</th><th>Grade</th><th>Matière</th><th>Statut</th><th>Classes</th><th>Disciplines</th><th>Obs.</th></tr></thead>
+      <tbody>${staffRows || '<tr><td colspan="7" class="muted">—</td></tr>'}</tbody>
+    </table>
+  `;
+
+  // “Brut” pour debug : on montre ce qu'on a réellement utilisé (latest only)
+  rawJson.textContent = JSON.stringify(rows, null, 2);
+
+  setOvTab('overview');
+  ov.style.display='flex';
+}
+
 
     // ===== Explorateur dynamique
     const tree=document.getElementById('tree'); let _topology=null, _activeNode=null;
@@ -525,36 +672,323 @@
       const negatif = /(vacataire|absent|retire|sorti)/.test(s);
       return positif && !negatif;
     }
+function htmlUnescape(s){
+  const div = document.createElement('div');
+  div.innerHTML = String(s ?? '');
+  return div.textContent || '';
+}
+
+
     /* ----------------------------------------------------- */
 
     /* ===== Cache + fallback par établissement ===== */
-    const etabCache = new Map(); // nom -> {tot, pos}
-    async function getEtabStaffCounts(name){
-      if (!name) return {tot:0, pos:0};
-      if (etabCache.has(name)) return etabCache.get(name);
-      try{
-        const d = await api('/api/carte/etab?etablissement='+encodeURIComponent(name));
-        const staff = getStaffArray(d) || getStaffArray(d?.data||{}) || d?.staff || [];
-        const tot = Array.isArray(staff) ? staff.length : 0;
-        const pos = Array.isArray(staff) ? staff.filter(isEnPoste).length : 0;
-        const val = {tot, pos};
-        etabCache.set(name, val);
-        return val;
-      }catch(_){
-        const val = {tot:0, pos:0};
-        etabCache.set(name, val);
-        return val;
-      }
+    /* ===== Cache + fallback par établissement ===== */
+const etabCache = new Map(); // clé: `${etab}|${annee}` -> {tot, pos}
+async function getEtabStaffCounts(name){
+  if (!name) return {tot:0, pos:0};
+  const key = `${name}|${ANNEE||''}`;
+  if (etabCache.has(key)) return etabCache.get(key);
+  try{
+    const q = new URLSearchParams({ etablissement: name, ...(ANNEE ? { annee: ANNEE } : {}) });
+    const d = await api('/api/inspecteur/carte/etab?' + q.toString());
+    const staff = getStaffArray(d) || getStaffArray(d?.data||{}) || d?.staff || [];
+    const tot = Array.isArray(staff) ? staff.length : 0;
+    const pos = Array.isArray(staff) ? staff.filter(isEnPoste).length : 0;
+    const val = {tot, pos};
+    etabCache.set(key, val);
+    return val;
+  }catch(_){
+    const val = {tot:0, pos:0};
+    etabCache.set(key, val);
+    return val;
+  }
+}
+
+function renderLowProgressTable(rows){
+  const host = document.getElementById('inc');
+  const top = [...rows].slice(0, 10);
+
+  const body = top.length ? top.map(r=>`
+    <tr>
+      <td>${esc(r.etablissement||'')}</td>
+      <td class="text-center">${r.ap||0}</td>
+      <td class="text-center">${r.received||0} / ${r.expected||0}</td>
+      <td class="${heat(Number(r.rate)||0)}" style="text-align:right">${isFinite(r.rate)?r.rate.toFixed(1):'0.0'}%</td>
+      <td><button class="btn soft mini" data-open-etab="${esc(r.etablissement||'')}">Détails</button></td>
+    </tr>`).join('')
+  : `<tr><td colspan="5" class="muted">Aucun établissement dans le périmètre.</td></tr>`;
+
+  const html = `
+    <section id="lowProgress">
+      <h4 style="margin:12px 0 6px">Établissements à <em>faible progression</em> (dépôts reçus / attendus)</h4>
+      <table class="table table-sm table-bordered align-middle">
+        <thead>
+          <tr>
+            <th>Établissement</th>
+            <th>AP actifs</th>
+            <th>Reçus / Attendus</th>
+            <th style="width:120px">% progression</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </section>
+  `;
+
+  const old = host.querySelector('#lowProgress');
+  if (old) old.outerHTML = html;
+  else host.insertAdjacentHTML('beforeend', html);
+}
+
+
+// Combine/format pourcentages établissement
+function normalizePct(x){ const n = Number(x); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0; }
+
+// Calcule un score moyen (heures, leçons, leçons dig., TP, TP dig.), sans compter “A” ni “R” ici
+function makeLowWorkRows(byEtabRows){
+  // rows: [{ etablissement, H, Pc, Pd, Tc, Td, ... }]
+  return (byEtabRows||[]).map(r=>{
+    const H  = normalizePct(r.H);
+    const L  = normalizePct(r.Pc);
+    const Ld = normalizePct(r.Pd);
+    const Tp = normalizePct(r.Tc);
+    const Td = normalizePct(r.Td);
+    const vals = [H,L,Ld,Tp,Td];
+    const score = vals.length ? (vals.reduce((s,v)=>s+v,0)/vals.length) : 0;
+    return { etablissement: r.etablissement, H, L, Ld, Tp, Td, score };
+  }).sort((a,b)=> (a.score - b.score) || a.etablissement.localeCompare(b.etablissement));
+}
+
+// Rendu “faible taux de travail” + repères (moyenne & médiane régionales)
+// Rendu “faible taux de travail” — repères = KPIs, filtrage = très faibles
+function renderLowWorkTable(rows, kpi){
+  const host = document.getElementById('inc');
+  const KPI = kpi || {H:0,L:0,Ld:0,Tp:0,Td:0,score:0};
+
+  // ===== Repères (IDENTIQUES aux KPIs tête de page)
+  const repereHTML = `
+    <div class="muted" style="margin:-4px 0 8px">
+      Repères (KPIs — périmètre courant) :
+      Heures <b>${fmt(KPI.H)}</b> •
+      Leçons <b>${fmt(KPI.L)}</b> •
+      Leçons dig. <b>${fmt(KPI.Ld)}</b> •
+      TP <b>${fmt(KPI.Tp)}</b> •
+      TP dig. <b>${fmt(KPI.Td)}</b> •
+      Score <b>${fmt(KPI.score)}</b>
+    </div>`;
+
+  // ===== RÈGLE DE SÉLECTION “très faible”
+  // 1) Score établissement STRICTEMENT inférieur à  min(50%, KPI.score - 15 pts)
+  // 2) ET au moins 2 indicateurs individuels (H/L/Ld/Tp/Td) < (repère KPI - 10 pts)
+  // -> repère exact et stable, facile à relire/adapter
+  // ===== RÈGLE DE SÉLECTION “faible taux de travail” (plus inclusive)
+const scoreThreshold = (Number(KPI.score) || 0) - 5;   // 5 points sous la synthèse
+function isVeryLow(r){
+  const badScore = Number.isFinite(r.score) && r.score <= scoreThreshold;
+  const indicatorsBelowKpi = [
+    r.H  < KPI.H,
+    r.L  < KPI.L,
+    r.Ld < KPI.Ld,
+    r.Tp < KPI.Tp,
+    r.Td < KPI.Td,
+  ].filter(Boolean).length;
+
+  // score franchement en dessous OU 3 indicateurs sur 5 sous les repères
+  return badScore || indicatorsBelowKpi >= 3;
+}
+
+
+  // ne garder que les établissements “très faibles”
+  const worst = (rows||[]).filter(isVeryLow)
+    .sort((a,b)=> (a.score - b.score) || a.etablissement.localeCompare(b.etablissement,'fr'))
+    .slice(0, 10);
+
+  const body = worst.length ? worst.map(r=>`
+    <tr>
+      <td>${esc(r.etablissement||'')}</td>
+      <td class="${heat(r.H)}"  style="text-align:right">${fmt(r.H)}</td>
+      <td class="${heat(r.L)}"  style="text-align:right">${fmt(r.L)}</td>
+      <td class="${heat(r.Ld)}" style="text-align:right">${fmt(r.Ld)}</td>
+      <td class="${heat(r.Tp)}" style="text-align:right">${fmt(r.Tp)}</td>
+      <td class="${heat(r.Td)}" style="text-align:right">${fmt(r.Td)}</td>
+      <td class="${heat(r.score)}" style="text-align:right"><b>${fmt(r.score)}</b></td>
+      <td><button class="btn soft mini" data-open-etab="${esc(r.etablissement||'')}">Détails</button></td>
+    </tr>`).join('')
+  : `<tr><td colspan="8" class="muted">Aucun établissement très faible pour ce périmètre.</td></tr>`;
+
+  const html = `
+    <section id="lowWork">
+      <h4 style="margin:12px 0 6px">Établissements à <em>faible taux de travail</em></h4>
+      ${repereHTML}
+      <table class="table table-sm table-bordered align-middle">
+        <thead>
+          <tr>
+            <th>Établissement</th>
+            <th>Heures %</th>
+            <th>Leçons %</th>
+            <th>Leçons dig. %</th>
+            <th>TP %</th>
+            <th>TP dig. %</th>
+            <th>Score</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </section>
+  `;
+
+  const old = host.querySelector('#lowWork');
+  if (old) old.outerHTML = html;
+  else host.insertAdjacentHTML('beforeend', html);
+}
+
+
+
+
+// === CLICK UNIQUE sur #inc : ouvre dépôt ou fiche établissement ===
+document.getElementById('inc')?.addEventListener('click', (e)=>{
+  const depBtn  = e.target.closest('[data-open-dep]');
+  const etabBtn = e.target.closest('[data-open-etab]');
+
+  if (depBtn){
+    const id = depBtn.getAttribute('data-open-dep');
+    if (id) openDeposit(id);
+    return; // évite d'enchaîner avec l'autre test
+  }
+  if (etabBtn){
+    const et = etabBtn.getAttribute('data-open-etab');
+    if (et) openEtabDetails(et, ANNEE);
+  }
+});
+
+function renderIncoherencesTable(items){
+  if (!items.length){
+    inc.innerHTML = '<div class="empty">Aucune incohérence détectée.</div>';
+    return;
+  }
+
+  // Agrégation par discipline (on n'utilise plus coverage)
+  const byDisc = new Map();
+  for (const it of items){
+    const k = String(it.nom||'').trim();
+    if (!byDisc.has(k)){
+      byDisc.set(k, { nom:k, presentIn:0, missingIn:0, classes:[], etabsBad:[] });
     }
+    const r = byDisc.get(k);
+    r.presentIn = Math.max(r.presentIn, Number(it.presentIn||0));
+    r.missingIn = Math.max(r.missingIn, Number(it.missingIn||0));
+    if (it.classe) r.classes.push(it.classe);
+
+    if (it.missing){
+      r.etabsBad.push({
+        etab : it.etab || '',
+        ap   : it.ap   || '',
+        depId: it.depId || ''
+      });
+    }
+  }
+
+  const rows = [...byDisc.values()]
+    // tri: d'abord ceux qui manquent le plus, puis par nom
+    .sort((a,b)=> (b.missingIn - a.missingIn) || a.nom.localeCompare(b.nom,'fr'))
+    .map(x=>{
+      const uniqClasses = Array.from(new Set(x.classes||[]));
+
+      // dédup établissements: clé = etab|ap
+      const uniqEtabs = Array.from(new Map((x.etabsBad||[]).map(e=>{
+        const key = [String(e.etab||'').trim(), String(e.ap||'').trim()].join('|');
+        return [key, e];
+      })).values());
+
+      const etabsHtml = uniqEtabs.length
+        ? uniqEtabs.map(e=>{
+            const label = esc(e.etab || '—') + (e.ap ? ` <span class="badge">${esc(e.ap)}</span>` : '');
+            return e.depId
+              ? `<button class="btn soft mini" data-open-dep="${esc(e.depId)}" title="Ouvrir le dépôt">${label}</button>`
+              : `<button class="btn soft mini" data-open-etab="${esc(e.etab||'')}" title="Voir l’établissement">${label}</button>`;
+          }).join(' ')
+        : '—';
+
+      // (optionnel) colonne “Reçus/Attendus”
+      const expected = (x.presentIn||0) + (x.missingIn||0);
+      const receivedSlashExpected = `${x.presentIn||0} / ${expected}`;
+
+      return `
+        <tr>
+          <td>${esc(x.nom)}</td>
+          <td class="text-center">${x.presentIn||0}</td>
+          <td class="text-center">${x.missingIn||0}</td>
+          <td class="text-center">${receivedSlashExpected}</td>
+          <td>${uniqClasses.length ? uniqClasses.map(c=>`<span class="badge">${esc(c)}</span>`).join(' ') : '—'}</td>
+          <td>${etabsHtml}</td>
+        </tr>`;
+    }).join('');
+
+  inc.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle">
+        <thead>
+          <tr>
+            <th>Discipline</th>
+            <th>Présente dans</th>
+            <th>Absente dans</th>
+            <th>Reçus / Attendus</th>
+            <th>Classes concernées</th>
+            <th>Établissements défaillants</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+
+
+function collectIncoherences(data){
+  const list = [];
+  (Array.isArray(data)? data : [data]).forEach(cls=>{
+    (cls?.incoherences||[]).forEach(it=>{
+      // Étend en une ligne par établissement manquant
+      const details = Array.isArray(it.details) ? it.details : [];
+      if (details.length === 0){
+        // on garde une ligne “agrégée” sans cible si pas de détails
+        list.push({ 
+          nom: it.nom, classe: cls?.classe, 
+          presentIn: it.presentIn, missingIn: it.missingIn, coverage: it.coverage
+        });
+      }else{
+        for (const d of details){
+          list.push({
+            nom: it.nom, classe: cls?.classe,
+            presentIn: it.presentIn, missingIn: it.missingIn, coverage: it.coverage,
+            etab: d.etab || '', ap: d.ap || '', depId: d.depId || '', missing: true
+          });
+        }
+      }
+    });
+  });
+  return list;
+}
+
+
 
     async function renderForNode(node){
       kScope.textContent = `${currentPeriodLabel()} — ${node.meta.type==='region'?'Toute la région':node.label}`;
 
-      const qs=currentPeriodQS();
+      const qs=currentQS();
       const filter = {};
       if(node.meta.type==='cycle'){ filter.cycle = node.meta.cycle; }
       if(node.meta.type==='spec'){  filter.cycle = node.meta.cycle; filter.specialite = node.meta.spec; }
       if(node.meta.type==='class'){ filter.cycle = node.meta.cycle; filter.specialite = node.meta.spec; }
+
+ if(node.meta.type==='class'){
+   filter.cycle = node.meta.cycle;
+   filter.specialite = node.meta.spec;
+  filter.classe = node.meta.classe; // <<< AJOUT
+ }
+
 
       // KPIs (historique)
       try{
@@ -570,6 +1004,20 @@
         kTp.textContent  = isFinite(K.taux?.tpFaits)?K.taux.tpFaits.toFixed(1)+'%':'—';
         kTd.textContent  = isFinite(K.taux?.tpDigitalFaits)?K.taux.tpDigitalFaits.toFixed(1)+'%':'—';
         kR.textContent   = isFinite(K.taux?.reussite)?K.taux.reussite.toFixed(1)+'%':'—';
+// ---- Synchronise les repères avec les KPIs affichés (même périmètre)
+const KPI_H  = Number.isFinite(K?.taux?.couvertureHeures)     ? Number(K.taux.couvertureHeures)    : 0;
+const KPI_L  = Number.isFinite(K?.taux?.leconsFaites)         ? Number(K.taux.leconsFaites)        : 0;
+const KPI_Ld = Number.isFinite(K?.taux?.leconsDigitalFaites)  ? Number(K.taux.leconsDigitalFaites) : 0;
+const KPI_Tp = Number.isFinite(K?.taux?.tpFaits)              ? Number(K.taux.tpFaits)             : 0;
+const KPI_Td = Number.isFinite(K?.taux?.tpDigitalFaits)       ? Number(K.taux.tpDigitalFaits)      : 0;
+
+// “score synthèse” = moyenne arithmétique des 5 indicateurs de réalisation
+const KPI_SCORE = [KPI_H, KPI_L, KPI_Ld, KPI_Tp, KPI_Td].reduce((s,v)=>s+(Number.isFinite(v)?v:0),0) / 5;
+
+GLOBAL_KPI = { H: KPI_H, L: KPI_L, Ld: KPI_Ld, Tp: KPI_Tp, Td: KPI_Td, score: KPI_SCORE };
+
+
+
       }catch(_){}
 
       /* ===== Carte scolaire ===== */
@@ -580,8 +1028,8 @@
           mapBox.innerHTML = '<div class="empty">Aucune donnée.</div>';
         } else {
           const S = dataCarte.stats || {};
-          if (S.etablissements != null) kE.textContent  = S.etablissements;
-          if (S.apActifs       != null) kAP.textContent = S.apActifs;
+          if (Number(S?.etablissements) > 0) kE.textContent  = S.etablissements;
+         if (Number(S?.apActifs)       > 0) kAP.textContent = S.apActifs;
 
           const rows = [...dataCarte.rows].sort((a,b)=> (a.etablissement||'').localeCompare(b.etablissement||''));
 
@@ -593,7 +1041,7 @@
                 const e = Number(r.eleves);
                 return sum + (Number.isFinite(e) && e>0 ? e : (f+g));
               }, 0);
-          kEl.textContent = elevesTotal;
+          if (Number(elevesTotal) > 0) kEl.textContent = elevesTotal;
 
           // ===== Staff : construit un dictionnaire pour la table et les KPI
           const staffCounts = {};
@@ -618,53 +1066,61 @@
           const enPosteTotal = (S.enseignants && S.enseignants.enPoste != null)
             ? S.enseignants.enPoste
             : Object.values(staffCounts).reduce((s,x)=> s + (Number(x?.pos)||0), 0);
-          kEns.textContent = enPosteTotal;
+          if (Number(enPosteTotal) > 0) kEns.textContent = enPosteTotal;
 
           // Tableau
-          mapBox.innerHTML = `
-            <table id="tblMap">
-              <thead>
-                <tr>
-                  <th>Établissement</th>
-                  <th>Cycles ouverts</th>
-                  <th>Classes ouvertes</th>
-                  <th>Filles</th>
-                  <th>Garçons</th>
-                  <th>Élèves</th>
-                  <th>Ens. totaux</th>
-                  <th>En poste</th>
-                  <th>AP #</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map(r=>{
-                  const cycles  = Array.isArray(r.cycles)? r.cycles : (r.cycle?[r.cycle]:[]);
-                  const classes = Array.isArray(r.classes)? r.classes : [];
-                  const apCount = Array.isArray(r.ap)? r.ap.length : (Number(r.ap)||0);
-                  const filles  = Number(r.filles)||0;
-                  const garcons = Number(r.garcons)||0;
-                  const eleves  = Number(r.eleves) || (filles+garcons);
+         mapBox.innerHTML = `
+  <table id="tblMap">
+    <thead>
+      <tr>
+        <th>Établissement</th>
+        <th>Cycles ouverts</th>
+        <th>Classes ouvertes</th>
+        <th>Filles</th>
+        <th>Garçons</th>
+        <th>Élèves</th>
+        <th>Ens. totaux</th>
+        <th>En poste</th>
+        <th>AP #</th>
+        <th></th>
+        <th>Suppr.</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows.map(r=>{
+        const cycles  = Array.isArray(r.cycles)? r.cycles : (r.cycle?[r.cycle]:[]);
+        const classes = Array.isArray(r.classes)? r.classes : [];
+        const apCount = Array.isArray(r.ap)? r.ap.length : (Number(r.ap)||0);
+        const filles  = Number(r.filles)||0;
+        const garcons = Number(r.garcons)||0;
+        const eleves  = Number(r.eleves) || (filles+garcons);
+       const sc = staffCounts[r.etablissement] || {tot:(Number(r.enseignantsTotaux)||0), pos:(Number(r.enseignantsEnPoste)||0)};
+const etabRaw = r.etablissement || '';
+const etab    = esc(etabRaw || '—');
+const lastId  = r.lastCardId ? esc(r.lastCardId) : '';
+return `
+  <tr>
+    <td>${etab}</td>
+            <td>${esc(cycles.join(', '))}</td>
+            <td>${esc(classes.join(', '))}</td>
+            <td>${filles}</td>
+            <td>${garcons}</td>
+            <td><b>${eleves}</b></td>
+            <td>${sc.tot||0}</td>
+            <td>${sc.pos||0}</td>
+            <td>${apCount}</td>
+           <td><button class="btn soft det" data-etab="${(etabRaw||'').replace(/"/g,'&quot;')}" title="Voir le détail">Détails</button></td>
+            <td>
+              ${ lastId
+                ? `<button class="btn" data-del-card="${lastId}" title="Supprimer la dernière carte de ${etab}">🗑️</button>`
+                : '<span class="muted">—</span>'
+              }
+            </td>
+          </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
 
-                  const sc = staffCounts[r.etablissement] || {tot:(Number(r.enseignantsTotaux)||0), pos:(Number(r.enseignantsEnPoste)||0)};
-
-                  const etab    = esc(r.etablissement||'—');
-                  return `
-                    <tr>
-                      <td>${etab}</td>
-                      <td>${esc(cycles.join(', '))}</td>
-                      <td>${esc(classes.join(', '))}</td>
-                      <td>${filles}</td>
-                      <td>${garcons}</td>
-                      <td><b>${eleves}</b></td>
-                      <td>${sc.tot||0}</td>
-                      <td>${sc.pos||0}</td>
-                      <td>${apCount}</td>
-                      <td><button class="btn soft det" data-etab="${etab}">Détails</button></td>
-                    </tr>`;
-                }).join('')}
-              </tbody>
-            </table>`;
 
           document.getElementById('btnExportMap').onclick =
             ()=> downloadCsv(tableToCsv(document.getElementById('tblMap')), 'carte_scolaire.csv');
@@ -672,12 +1128,71 @@
             ()=> printElement(document.getElementById('tblMap'), 'Carte scolaire — inspection');
 
           mapBox.querySelectorAll('.det').forEach(b=>{
-            b.addEventListener('click', ()=> openEtabDetails(b.dataset.etab));
+           b.addEventListener('click', ()=> openEtabDetails(b.dataset.etab, ANNEE));
           });
         }
       }catch(e){
         mapBox.innerHTML = '<div class="empty">Carte scolaire indisponible.</div>';
       }
+
+// suppression carte scolaire
+// === suppression carte scolaire (robuste + délégation) ===
+// on écoute les clics sur le conteneur, ça marche même après re-render
+mapBox.addEventListener('click', async (ev)=>{
+  const btn = ev.target.closest('[data-del-card]');
+  if (!btn) return;
+
+  const cardId = btn.getAttribute('data-del-card') || '';
+  // on tente aussi de récupérer l'établissement (sert pour fallback)
+  const tr = btn.closest('tr');
+  const etabName = tr ? (tr.children[0]?.textContent?.trim() || '') : '';
+
+  if (!cardId && !etabName) return;
+  if (!confirm('Supprimer définitivement cette carte scolaire ?')) return;
+
+  // petite désactivation visuelle
+  const oldHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '…';
+
+  async function tryDelete(url){
+    const r = await fetch(url, { method:'DELETE', credentials:'same-origin' });
+    let j = null;
+    try { j = await r.json(); } catch(_) {}
+    return { ok: r.ok && (j?.ok !== false), j };
+  }
+
+  try{
+    // 1) DELETE /api/inspecteur/carte-scolaire/:id
+    if (cardId){
+      let { ok } = await tryDelete('/api/inspecteur/carte-scolaire/'+encodeURIComponent(cardId));
+      // 2) si ça échoue, on tente DELETE /api/inspecteur/carte-scolaire?id=...
+      if (!ok){
+        ({ ok } = await tryDelete('/api/inspecteur/carte-scolaire?id='+encodeURIComponent(cardId)));
+      }
+      // 3) si toujours pas ok et qu'on a l'établissement, tenter “last by etab”
+      if (!ok && etabName){
+        ({ ok } = await tryDelete('/api/inspecteur/carte-scolaire/last?etablissement='+encodeURIComponent(etabName)));
+      }
+      if (!ok) throw new Error('delete failed');
+    }else if (etabName){
+      // cas sans id: supprimer la dernière carte de l’établissement
+      const { ok } = await tryDelete('/api/inspecteur/carte-scolaire/last?etablissement='+encodeURIComponent(etabName));
+      if (!ok) throw new Error('delete failed');
+    }
+
+    toast('Carte supprimée');
+    await renderForNode(_activeNode); // rafraîchit KPIs + tableau
+
+  }catch(e){
+    alert('Suppression impossible : ' + (e?.message || ''));
+    btn.disabled = false;
+    btn.innerHTML = oldHtml;
+    return;
+  }
+});
+
+
 
       // ===== Synthèse (form-view) =====
       if (node.meta.type==='region'){
@@ -748,7 +1263,7 @@
 </details>`;
           });
 
-          syn.innerHTML = blocks;
+         syn.innerHTML = blocks;
 
           document.getElementById('btnCsv').onclick=()=>{
             const firstTbl=document.querySelector('.tblSynth'); if(!firstTbl) return;
@@ -758,14 +1273,32 @@
             const container=document.getElementById('syn'); printElement(container, 'Synthèse');
           };
 
-          const miss=[], foreign=[];
-          data.forEach(cls=> (cls.disciplines||[]).forEach(d=>{ if(d.missing) miss.push({c:cls.classe,n:d.nom}); if(d.foreign) foreign.push({c:cls.classe,n:d.nom}); }));
-          if (!miss.length && !foreign.length) inc.innerHTML='<div class="empty">Aucune incohérence détectée.</div>';
-          else inc.innerHTML = `
-            <div style="display:grid;gap:10px">
-              ${miss.length? `<div><strong>Manquantes</strong><ul>${miss.map(m=>`<li>${esc(m.c)} — <em>${esc(m.n)}</em></li>`).join('')}</ul></div>`:''}
-              ${foreign.length? `<div><strong>Étrangères</strong><ul>${foreign.map(m=>`<li>${esc(m.c)} — <em>${esc(m.n)}</em></li>`).join('')}</ul></div>`:''}
-            </div>`;
+         // ✅ Utiliser la réponse du backend: form.incoherences
+const inco = collectIncoherences(data);
+renderIncoherencesTable(inco);
+// --- Low progression by établissement
+// ===== Faible taux de travail par établissement (dans le périmètre courant)
+// ===== Faible taux de travail (réalisations) sur TOUS les dépôts du périmètre =====
+try{
+  const qs = currentQS();
+  const filter = {};
+  if (node.meta.type==='cycle'){ filter.cycle = node.meta.cycle; }
+  if (node.meta.type==='spec' ){ filter.cycle = node.meta.cycle; filter.specialite = node.meta.spec; }
+  if (node.meta.type==='class'){ filter.cycle = node.meta.cycle; filter.specialite = node.meta.spec; filter.classe = node.meta.classe; }
+
+ const lowRows = await buildEtabWorkStats(filter, qs);
+renderLowWorkTable(lowRows, GLOBAL_KPI);
+}catch(e){
+  const host = document.getElementById('inc');
+  const old  = host.querySelector('#lowWork');
+  if (old) old.remove();
+}
+
+try{
+  const qsStr = (extra)=> new URLSearchParams({ ...(currentQS()||{}), ...(extra||{}) }).toString();
+  const progress = await api('/api/summary/progress?' + qsStr(filter));
+  renderLowProgressTable(progress?.rows || []);
+}catch(_){}
         }
       }
 
@@ -773,37 +1306,108 @@
       await loadDeposits(filter, qs);
     }
 
-    /* ===== Dépôts (mailbox) ===== */
-    const mailList = document.getElementById('mailList');
-    const mailEmpty = document.getElementById('mailEmpty');
+    /* ===== Dépôts (mailbox) — avec pagination ===== */
+const mailList  = document.getElementById('mailList');
+const mailEmpty = document.getElementById('mailEmpty');
+const depPrev   = document.getElementById('depPrev');
+const depNext   = document.getElementById('depNext');
+const depInfo   = document.getElementById('depInfo');
+const depLimit  = document.getElementById('depLimit');
 
-    async function loadDeposits(filter, qs){
-      const q = new URLSearchParams({ ...(filter||{}), ...(qs||{}) });
-      try{
-        const res = await api('/api/summary/deposits?'+q.toString());
-        const rows = res.rows || [];
-        mailList.innerHTML = '';
-        if(!rows.length){ mailEmpty.style.display='block'; return; }
-        mailEmpty.style.display='none';
-        rows.forEach(r=>{
-          const when = new Date(r.createdAt).toLocaleString();
-          const div = document.createElement('div');
-          div.className='mail';
-          div.dataset.id = r.id;
-          div.innerHTML = `
-            <div class="sujet">${esc(r.etablissement)} — <span class="muted">Éval ${r.evaluation}</span>
-              <span class="badge">${esc(r.cycle)}</span>
-              <span class="badge">${esc(r.specialite)}</span>
-            </div>
-            <div class="sub">${esc(r.animateur||'—')} • ${when} • ${r.classes||0} classe(s)</div>`;
-          div.addEventListener('click', ()=> openDeposit(r.id));
-          mailList.appendChild(div);
-        });
-      }catch(e){
-        mailList.innerHTML = '<div class="empty">Erreur chargement dépôts.</div>';
-      }
+let DEP_PAGE = 1;
+let DEP_TOTAL = 0;
+let DEP_LIMIT = parseInt(depLimit?.value || '20', 10);
+
+function updatePager(){
+  const totalPages = Math.max(1, Math.ceil(DEP_TOTAL / Math.max(1, DEP_LIMIT)));
+  depInfo.textContent = `Page ${DEP_PAGE} / ${totalPages} • ${DEP_TOTAL} dépôt(s)`;
+  depPrev.disabled = (DEP_PAGE <= 1);
+  depNext.disabled = (DEP_PAGE >= totalPages);
+}
+
+async function loadDeposits(filter, qs){
+  const q = new URLSearchParams({ ...(filter||{}), ...(qs||{}), page:String(DEP_PAGE), limit:String(DEP_LIMIT) });
+  try{
+    const res = await api('/api/summary/deposits?'+q.toString());
+    const rows  = res.rows || [];
+    DEP_TOTAL   = Number(res.total||0);
+    DEP_LIMIT   = Number(res.limit||DEP_LIMIT);
+    DEP_PAGE    = Number(res.page || DEP_PAGE);
+
+    mailList.innerHTML = '';
+    if(!rows.length){
+      mailEmpty.style.display='block';
+      updatePager();
+      return;
     }
-    document.getElementById('btnRefreshDepots').onclick = ()=> _activeNode && renderForNode(_activeNode);
+    mailEmpty.style.display='none';
+
+    rows.forEach(r=>{
+      const when = new Date(r.createdAt).toLocaleString();
+      const div = document.createElement('div');
+      div.className='mail';
+      div.dataset.id = r.id;
+      div.innerHTML = `
+        <div class="sujet">${esc(r.etablissement)} — <span class="muted">Éval ${r.evaluation ?? '—'}</span>
+          <span class="badge">${esc(r.cycle)}</span>
+          <span class="badge">${esc(r.specialite)}</span>
+        </div>
+        <div class="sub">
+          ${esc(r.animateur||'—')} • ${when} • ${r.classes||0} classe(s)
+          <button class="btn soft" style="float:right" title="Supprimer ce dépôt" data-del-depot="${esc(r.id)}">🗑️</button>
+        </div>`;
+
+      // ouvrir le dépôt
+      div.addEventListener('click', ()=> openDeposit(r.id));
+
+      // suppression (écouteur DANS la boucle — bon scope)
+      div.querySelector('[data-del-depot]')?.addEventListener('click', async (ev)=>{
+        ev.stopPropagation();
+        const id = ev.currentTarget.getAttribute('data-del-depot');
+        if (!confirm('Supprimer définitivement ce dépôt ?')) return;
+        try{
+          const r = await fetch('/api/inspecteur/deposits/'+encodeURIComponent(id), {
+            method:'DELETE', credentials:'same-origin'
+          });
+          const j = await r.json();
+          if (!r.ok || !j.ok) throw new Error(j.error||'delete failed');
+          toast('Dépôt supprimé');
+          await loadDeposits(filter, qs);   // recharge la liste
+          await renderForNode(_activeNode); // maj KPI/carte/synthèse
+        }catch(e){
+          alert('Suppression impossible : ' + (e.message||''));
+        }
+      });
+
+      mailList.appendChild(div);
+    });
+
+    updatePager();
+  }catch(e){
+    mailList.innerHTML = '<div class="empty">Erreur chargement dépôts.</div>';
+    depInfo.textContent = 'Erreur';
+  }
+}
+
+
+document.getElementById('btnRefreshDepots').onclick = ()=>{
+  DEP_PAGE = 1;
+  _activeNode && renderForNode(_activeNode);
+};
+
+depPrev?.addEventListener('click', ()=>{
+  if (DEP_PAGE > 1) { DEP_PAGE--; _activeNode && renderForNode(_activeNode); }
+});
+depNext?.addEventListener('click', ()=>{
+  const totalPages = Math.max(1, Math.ceil(DEP_TOTAL / Math.max(1, DEP_LIMIT)));
+  if (DEP_PAGE < totalPages) { DEP_PAGE++; _activeNode && renderForNode(_activeNode); }
+});
+depLimit?.addEventListener('change', ()=>{
+  DEP_LIMIT = parseInt(depLimit.value||'20',10);
+  DEP_PAGE = 1;
+  _activeNode && renderForNode(_activeNode);
+});
+
 
     /* ===== Overlay dépôt ===== */
     const ov = document.getElementById('ov');
@@ -834,6 +1438,8 @@
 
     ovClose.onclick = ()=> ov.style.display='none';
     ov.addEventListener('click', (e)=>{ if(e.target===ov) ov.style.display='none'; });
+
+
 
     // ---- helpers “brut → nombres”
     const getN = (obj, ...keys) => {
@@ -878,6 +1484,94 @@
       });
       return T;
     }
+
+/* ===== Repères & agrégation à partir de TOUS les dépôts ===== */
+
+// Moyenne + médiane (repères fiables)
+function meanMedian(arr){
+  const a = (arr||[]).map(Number).filter(n=>Number.isFinite(n)).sort((x,y)=>x-y);
+  const n = a.length || 1;
+  const avg = a.reduce((s,v)=>s+v,0) / n;
+  const med = (n%2 ? a[(n-1)/2] : (a[n/2-1]+a[n/2])/2) || 0;
+  return { avg, med };
+}
+
+// 1) Récupère toutes les pages de /api/summary/deposits pour un filtre/période
+async function fetchAllDepositsFor(filter, qs){
+  const out = [];
+  let page = 1;
+  const limit = 200;
+  while (true){
+    const q = new URLSearchParams({ ...(filter||{}), ...(qs||{}), page:String(page), limit:String(limit) });
+    const res = await api('/api/summary/deposits?' + q.toString()).catch(()=>({rows:[]}));
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    if (!rows.length) break;
+    out.push(...rows);
+    const total = Number(res.total||0);
+    if (page * limit >= total) break;
+    page++;
+  }
+  return out;
+}
+
+// 2) Somme les compteurs d’un dépôt (depuis le JSON détaillé)
+function sumDeposit(deposit){
+  const acc = { Hd:0,Hf:0, Lp:0,Lf:0, Ldp:0,Ldf:0, Tp:0,Tf:0, Tdp:0,Tdf:0 };
+  const classes = Array.isArray(deposit?.classes) ? deposit.classes : [];
+  for (const c of classes){
+    const discs = Array.isArray(c?.disciplines) ? c.disciplines
+                : (Array.isArray(c?.modules) ? c.modules : []);
+    for (const d of discs){
+      acc.Hd  += getN(d,'hD','Hd','heuresDues');
+      acc.Hf  += getN(d,'hF','Hf','heuresFaites');
+      acc.Lp  += getN(d,'lp','Lp','leconsPrevues');
+      acc.Lf  += getN(d,'lf','Lf','leconsFaites');
+      acc.Ldp += getN(d,'ldp','Ldp','leconsDigPrevues','leconsDigitaliseesPrevues');
+      acc.Ldf += getN(d,'ldf','Ldf','leconsDigFaites','leconsDigitaliseesFaites');
+      acc.Tp  += getN(d,'tp','Tp','tpPrevus');
+      acc.Tf  += getN(d,'tf','Tf','tpFaits');
+      acc.Tdp += getN(d,'tdp','Tdp','tpDigPrevus','tpDigitalisesPrevus');
+      acc.Tdf += getN(d,'tdf','Tdf','tpDigFaits','tpDigitalisesFaits');
+    }
+  }
+  return acc;
+}
+
+// 3) Construit les % par établissement à partir de l’ensemble des dépôts
+async function buildEtabWorkStats(filter, qs){
+  const list = await fetchAllDepositsFor(filter, qs);
+  const byId = new Map();
+
+  for (const r of list){
+    let full = null;
+    try { full = await api('/api/summary/deposits/'+ encodeURIComponent(r.id)); }
+    catch(_) { continue; }
+
+    const etab = full?.etablissement || r?.etablissement || '—';
+    const add  = sumDeposit(full);
+    const acc  = byId.get(etab) || { etab, Hd:0,Hf:0, Lp:0,Lf:0, Ldp:0,Ldf:0, Tp:0,Tf:0, Tdp:0,Tdf:0 };
+    for (const k of Object.keys(add)) acc[k] += Number(add[k]||0);
+    byId.set(etab, acc);
+  }
+
+  // % + score moyen
+  const rows = Array.from(byId.values()).map(x=>{
+    const H  = pct(x.Hd,  x.Hf);
+    const L  = pct(x.Lp,  x.Lf);
+    const Ld = pct(x.Ldp, x.Ldf);
+    const Tp = pct(x.Tp,  x.Tf);
+    const Td = pct(x.Tdp, x.Tdf);
+    const vals = [H,L,Ld,Tp,Td];
+    const score = vals.reduce((s,v)=>s+v,0) / vals.length;
+    return { etablissement:x.etab, H, L, Ld, Tp, Td, score };
+  });
+
+  // tri du plus faible au plus élevé
+  rows.sort((a,b)=> (a.score - b.score) || a.etablissement.localeCompare(b.etablissement,'fr'));
+  return rows;
+}
+
+
 
     // ===== Helpers anti double-compte
     function hintEffectifClasse(cls){
@@ -1151,6 +1845,9 @@ if (socket){
   socket.on('chat:new', addMsg);
   socket.on('chat:error', e=> alert(e?.message||e?.error||'Erreur chat'));
   socket.on('presence:update', n=> presenceEl && (presenceEl.textContent = `Connectés : ${n}`));
+socket.on('carte:updated',  ()=> _activeNode && renderForNode(_activeNode));
+socket.on('carte:deleted',  ()=> _activeNode && renderForNode(_activeNode));
+socket.on('deposit:deleted',()=> _activeNode && renderForNode(_activeNode));
 
   // typing
   let typingClear;
@@ -1167,6 +1864,35 @@ if (socket){
     socket.emit('chat:join', { inspection: CONNECTED_USER.inspection });
   });
 }
+
+// === Purge du chat (IPR seulement) ===
+const resetBtn = document.getElementById('chatResetBtn');
+resetBtn?.addEventListener('click', async ()=>{
+  const insp = CONNECTED_USER?.inspection || '';
+  if (!insp) { alert('Inspection inconnue.'); return; }
+
+  if (!confirm('Purger tout l’historique du salon IPR ⇄ AP pour cette inspection ?')) return;
+
+  try{
+    const qs = new URLSearchParams({ inspection: insp });
+    const r  = await fetch('/api/chat/reset?' + qs.toString(), {
+      method: 'DELETE',
+      credentials: 'same-origin'
+    });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'reset failed');
+
+    // vide localement et redemande l’historique (désormais vide)
+    msgsEl.innerHTML = '';
+    lastDayKey = '';
+    toast('Chat vidé.');
+    socket?.emit('chat:join', { inspection: insp });
+  }catch(e){
+    alert('Purge impossible : ' + (e?.message || ''));
+  }
+});
+
+
 
 // Emit “typing”
 if (chatTextEl && socket){
@@ -1235,7 +1961,125 @@ document.getElementById('attachBtn')?.addEventListener('click', ()=>{
 
     // ===== Boot
     async function buildAndRender(){ await buildTree(); }
+// Ajoute ?annee=YYYY-YYYY au lien "Fichier personnel" (si absent)
+  (function () {
+    const a = document.getElementById('btnStaff');
+    if (!a) return;
+
+    function schoolYear(d = new Date()) {
+      const y = d.getFullYear();
+      const m = d.getMonth(); // 0=janvier
+      // année scolaire : d’août (7) à juillet (6)
+      return (m >= 7) ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+    }
+
+    const url = new URL(a.getAttribute('href'), location.origin);
+    if (!url.searchParams.has('annee')) {
+      url.searchParams.set('annee', schoolYear());
+      a.setAttribute('href', url.pathname + '?' + url.searchParams.toString());
+    }
+  })();
+/* ======= Purge Cartes scolaires ======= */
+(function(){
+  const btnOpen   = document.getElementById('btnPurgeCards');
+  const modal     = document.getElementById('purgeModal');
+  const closeBtn  = document.getElementById('purgeClose');
+  const yearIn    = document.getElementById('purgeYear');
+  const filterIn  = document.getElementById('purgeFilter');
+  const reloadBtn = document.getElementById('purgeReload');
+  const doBtn     = document.getElementById('purgeDo');
+  const chkAll    = document.getElementById('purgeChkAll');
+  const tbody     = document.querySelector('#purgeTable tbody');
+  const emptyMsg  = document.getElementById('purgeEmpty');
+
+  if (!btnOpen) return;
+
+  function schoolYear(d=new Date()){
+    const y=d.getFullYear(), m=d.getMonth();
+    return (m>=7)?`${y}-${y+1}`:`${y-1}-${y}`;
+  }
+  yearIn.value = new URLSearchParams(location.search).get('annee') || schoolYear();
+
+  function renderRows(rows){
+    const q = filterIn.value.trim().toLowerCase();
+    const filtered = q ? rows.filter(r => (r?.meta?.etablissement||'').toLowerCase().includes(q)) : rows;
+
+    tbody.innerHTML = filtered.map(row=>{
+      const m = row.meta || {};
+      const id = row._id || row.id || '';
+      const when = row.receivedAt ? new Date(row.receivedAt).toLocaleString() : '';
+      return `<tr>
+        <td style="text-align:center"><input type="checkbox" class="sel" value="${id}"></td>
+        <td>${esc(m.etablissement||'')}</td>
+        <td>${esc(m.annee||'')}</td>
+        <td>${esc(m.cycle||'')}</td>
+        <td>${esc(String(m.specialite||'').toUpperCase())}</td>
+        <td style="text-align:center">${row.version||1}</td>
+        <td>${esc(when)}</td>
+      </tr>`;
+    }).join('');
+
+    emptyMsg.style.display = filtered.length ? 'none' : 'block';
+  }
+
+  async function loadList(){
+    const qs = new URLSearchParams();
+    if (yearIn.value) qs.set('annee', yearIn.value);
+    // route "latest" = 1 carte par couple etab+annee+cycle+spec
+    const res = await api('/api/inspecteur/carte-scolaire/latest?'+qs.toString()).catch(()=>({rows:[]}));
+    renderRows(Array.isArray(res.rows)?res.rows:[]);
+  }
+
+  btnOpen.addEventListener('click', ()=>{ modal.style.display='flex'; loadList(); });
+  closeBtn.addEventListener('click', ()=> modal.style.display='none');
+  modal.addEventListener('click', e=>{ if(e.target===modal) modal.style.display='none'; });
+
+  reloadBtn.addEventListener('click', loadList);
+  filterIn.addEventListener('input', ()=>{
+    const rows = [...tbody.querySelectorAll('tr')].map(tr=>{
+      const tds = tr.querySelectorAll('td');
+      return {
+        _id: tr.querySelector('.sel')?.value,
+        meta: { etablissement: tds[1]?.textContent||'', annee: tds[2]?.textContent||'', cycle: tds[3]?.textContent||'', specialite: tds[4]?.textContent||'' },
+        version: tds[5]?.textContent||'',
+        receivedAt: tds[6]?.textContent||''
+      };
+    });
+    renderRows(rows);
+  });
+
+  chkAll.addEventListener('change', ()=>{
+    document.querySelectorAll('#purgeTable .sel').forEach(c=> c.checked = chkAll.checked);
+  });
+
+  doBtn.addEventListener('click', async ()=>{
+    const ids = [...document.querySelectorAll('#purgeTable .sel:checked')].map(x=>x.value).filter(Boolean);
+    if (!ids.length) { alert('Sélectionnez au moins une carte.'); return; }
+    if (!confirm(`Supprimer ${ids.length} carte(s) ? Cette action est irréversible.`)) return;
+
+    doBtn.disabled = true;
+    try{
+      const r = await fetch('/api/inspecteur/carte-scolaire', {
+        method: 'DELETE',
+        headers: { 'Content-Type':'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ ids })
+      });
+      const j = await r.json();
+      if (!r.ok || j.ok===false) throw new Error(j.error||'delete failed');
+      toast(`Supprimées: ${j.deleted||ids.length}`);
+      await loadList();
+      if (_activeNode) await renderForNode(_activeNode); // refresh KPIs/table
+    }catch(e){
+      alert('Suppression impossible : ' + (e.message||''));
+    }finally{
+      doBtn.disabled = false;
+    }
+  });
+})();
+
     buildAndRender();
   </script>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
