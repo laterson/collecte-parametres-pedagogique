@@ -44,6 +44,26 @@
   .actions{display:flex;gap:6px;justify-content:center}
   code{background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 6px;border-radius:6px}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid var(--bd);background:#f8fafc;font-size:.8rem}
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: #0b5cab;
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 999px;
+    box-shadow: 0 10px 22px -14px #0006;
+    font-size: .92rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 9999;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 </style>
 </head>
 <body>
@@ -142,6 +162,7 @@
 
     <!-- Form création/édition -->
     <form id="frmUser" style="margin-top:16px">
+      <h3 id="uFormMode" class="muted" style="margin:8px 0 0">Créer un utilisateur</h3>
       <div class="row">
         <div><label>Nom complet <input name="nomComplet" required /></label></div>
         <div><label>Rôle
@@ -163,7 +184,9 @@
       </div>
       <div class="row"><div><label>Mot de passe <input type="text" name="password" required /></label></div></div>
       <input type="hidden" name="_id" />
-      <button class="btn primary" style="margin-top:10px" type="submit">💾 Enregistrer</button>
+      <button class="btn primary" style="margin-top:10px" type="submit">💾 Enregistrer</button> 
+      <button class="btn" id="uNew" type="button" style="margin-left:8px">➕ Nouveau</button>
+
     </form>
 
     <!-- Super admin -->
@@ -328,6 +351,46 @@ document.getElementById('btnInspAdd').addEventListener('click', async ()=>{
 let USERS_ALL=[], uSortKey='nomComplet', uSortDir='asc', uPage=1, uPageSize=25;
 const tbody=document.querySelector('#tblUsers tbody'), frmUser=document.getElementById('frmUser');
 const uInsp=document.getElementById('uInsp'), uDept=document.getElementById('uDept'), uDeptCode=document.getElementById('uDeptCode');
+
+const uFormMode = document.getElementById('uFormMode');
+const btnNew    = document.getElementById('uNew');
+
+// Petit utilitaire de message éphémère (toast)
+let _toastTimer = null;
+function showToast(message, ms = 2500) {
+  // réutilise le même élément si déjà créé
+  let el = document.getElementById('appToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'appToast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.classList.add('show');
+
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=> el.classList.remove('show'), ms);
+}
+
+
+function resetUserForm() {
+  frmUser.reset();
+  uDeptCode.value = '';
+  frmUser._id.value = '';
+  uFormMode.textContent = 'Créer un utilisateur';
+
+  // focus sur le premier champ (confort)
+  const first = frmUser.querySelector('input[name="nomComplet"]');
+  if (first) first.focus();
+
+  // 👉 message éphémère
+  showToast('Veuillez enregistrer le nouvel utilisateur.');
+}
+btnNew.addEventListener('click', resetUserForm);
+
+
+
 const uCount=document.getElementById('uCount'), uPrev=document.getElementById('uPrev'), uNext=document.getElementById('uNext');
 const uPageInput=document.getElementById('uPage'), uPageSizeSel=document.getElementById('uPageSize');
 document.querySelectorAll('#tblUsers thead .th-sort').forEach(th=>{
@@ -376,12 +439,17 @@ function editUser(id){
   frmUser.nomComplet.value=tr.children[0].textContent.trim();
   frmUser.email.value=tr.children[1].textContent.trim();
   frmUser.etablissement.value=tr.children[2].textContent.trim();
-  const deptName=tr.children[3].textContent.trim(); [...uDept.options].forEach(o=>{ if(o.value===deptName){ uDept.value=deptName; uDept.dispatchEvent(new Event('change')); }});
+  const deptName=tr.children[3].textContent.trim();
+  [...uDept.options].forEach(o=>{ if(o.value===deptName){ uDept.value=deptName; uDept.dispatchEvent(new Event('change')); }});
   frmUser.role.value=tr.children[4].textContent.trim();
-  const inspVal=tr.children[5].textContent.trim(); if([...uInsp.options].some(o=>o.value===inspVal)) uInsp.value=inspVal;
-  frmUser.password.value=''; frmUser.scrollIntoView({behavior:'smooth'});
+  const inspVal=tr.children[5].textContent.trim();
+  if([...uInsp.options].some(o=>o.value===inspVal)) uInsp.value=inspVal;
+  frmUser.password.value='';
+  uFormMode.textContent = 'Modifier un utilisateur';       // <-- indique le mode
+  frmUser.scrollIntoView({behavior:'smooth'});
 }
 window.editUser=editUser;
+
 
 frmUser.addEventListener('submit', async e=>{
   e.preventDefault();
@@ -391,8 +459,10 @@ frmUser.addEventListener('submit', async e=>{
   }else{
     await api('/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   }
-  frmUser.reset(); uDeptCode.value=''; loadUsers();
+  resetUserForm();                 // <-- garantit que _id est vidé
+  loadUsers();
 });
+
 
 document.getElementById('frmAdminPass').addEventListener('submit', async e=>{
   e.preventDefault();

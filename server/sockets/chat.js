@@ -1,10 +1,71 @@
 // server/sockets/chat.js
-// Chat temps réel (WhatsApp-like) persistant via SQLite (db/chat.js)
+// Chat temps réel : essaie d'utiliser le store SQLite (better-sqlite3),
+// sinon bascule sur un store en mémoire (pour Render).
 
-const chatStore = require('../../db/chat'); // adapte le chemin si besoin
+let chatStore;
+try {
+  // tente le vrai store persistant (nécessite better-sqlite3)
+  chatStore = require('../../db/chat'); // ← garde ce chemin si c'est le bon chez toi
+} catch (e) {
+  console.warn('Chat store disabled (better-sqlite3 not available):', e.message);
+
+  // ---- Fallback mémoire, mêmes méthodes que db/chat.js ----
+  const mem = new Map();      // room -> [rows]
+  let gid = 1;                // id auto-incrément pour getById
+
+  function ensure(room) {
+    if (!mem.has(room)) mem.set(room, []);
+    return mem.get(room);
+  }
+
+  chatStore = {
+    insert(data) {
+      // Simule INSERT OR IGNORE sur client_msg_id
+      if (data.client_msg_id) {
+        const dup = ensure(data.room).find(r => r.client_msg_id === data.client_msg_id);
+        if (dup) return { changes: 0, lastInsertRowid: dup.id };
+      }
+      const row = {
+        id: gid++,
+        room: data.room,
+        author_name: data.author_name || '—',
+        text: String(data.text || ''),
+        ts: Number(data.ts) || Date.now(),
+        client_msg_id: data.client_msg_id || null,
+        reply_to_id: data.reply_to_id || null,
+        reply_to_from: data.reply_to_from || null,
+        reply_to_text: data.reply_to_text || null,
+      };
+      ensure(data.room).push(row);
+      return { changes: 1, lastInsertRowid: row.id };
+    },
+
+    getById(id) {
+      for (const arr of mem.values()) {
+        const r = arr.find(x => x.id === id);
+        if (r) return r;
+      }
+      return null;
+    },
+
+    getByClient(room, client_msg_id) {
+      return ensure(room).find(r => r.client_msg_id === client_msg_id) || null;
+    },
+
+    listLast(room, limit = 200) {
+      const arr = ensure(room);
+      return arr.slice(Math.max(0, arr.length - limit));
+    },
+
+    clearRoom(room) {
+      mem.delete(room);
+    }
+  };
+}
 
 // clé unique du salon par inspection
 const roomKey = (insp) => `insp:${String(insp || 'artsplastiques').toLowerCase()}`;
+
 
 function attachChat(io) {
   // suivi présence : room -> Set(socketId)

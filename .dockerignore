@@ -1,0 +1,8 @@
+﻿node_modules
+.git
+npm-debug.log
+Dockerfile.alpine
+.fly
+uploads
+.env
+.env.*

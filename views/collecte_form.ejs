@@ -5,6 +5,8 @@
   <title>Collecte des indicateurs – <%= ((user && user.inspection)||'Inspection').toUpperCase() %></title>
   <style>
 
+    
+
     .btn.danger{background:#fff5f5;border-color:#fecaca;color:#b91c1c}
 .btn.danger:hover{background:#fee2e2}
 .warn{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px}
@@ -870,6 +872,8 @@ const effTableWrap=document.getElementById('effTableWrap');
 /******************** CACHE PARAMS ÉTABLISSEMENT ********************/
 let SETTINGS_CACHE=null;
 
+const STRICT_BASELINE = true; // ou : (CONNECTED_USER.role||'').toLowerCase()==='ap';
+let BASELINE_INDEX = new Map(); // Map<base, Set<discipline>>
 
 /******************** HELPERS API ********************/
 async function getJSON(url){
@@ -987,6 +991,76 @@ function splitClassLabel(label){
 function makeClassLabel(base, division=1){ base=_clean(base); return (division && division!==1) ? `${base} (${division})` : base; }
 function canonical(label){ return splitClassLabel(label).base; }
 
+// Transforme BSTATE (par divisions) en "list" pour l'API baselines
+function serializeBaselines(){
+  const annee = (yearInput?.value || '').trim() || getSchoolYear();
+  const cycle = (bCycle?.value || selCycle?.value || '').trim();
+  const specialite = (bSpec?.value || selSpec?.value || '').trim().toUpperCase();
+  if(!annee || !cycle || !specialite) return { annee:'', cycle:'', specialite:'', list: [] };
+
+  const list = [];
+  for(const [classLabel, rows] of BSTATE.entries()){
+    const base = splitClassLabel(classLabel).base; // baseline par "base" (pas la division)
+    (rows || []).forEach(r=>{
+      const row = {
+        classe: base,
+        discipline: String(r.discipline||'').trim(),
+        heuresDues: +r.heuresDues || 0,
+        leconsPrevues: +r.leconsPrevues || 0,
+        leconsDigPrevues: +r.leconsDigPrevues || 0,
+        tpPrevus: +r.tpPrevus || 0,
+        tpDigPrevus: +r.tpDigPrevus || 0,
+        enseignantsPoste: +r.enseignantsPoste || 0
+      };
+      if(row.discipline) list.push(row);
+    });
+  }
+  return { annee, cycle, specialite, list };
+}
+
+async function saveBaselinesReplace(){
+  const { annee, cycle, specialite, list } = serializeBaselines();
+  if(!annee || !cycle || !specialite) return;
+
+  // 1) purge du couple courant
+  await fetch(
+    `/api/settings/baselines?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cycle)}&specialite=${encodeURIComponent(specialite)}`,
+    { method: 'DELETE', credentials: 'same-origin' }
+  ).then(r=>r.json()).catch(()=>null);
+
+  // 2) recréation à l’identique
+  if(list.length){
+    await postJSON('/api/settings/baselines', { annee, cycle, specialite, list });
+  }
+}
+
+async function saveAllAndClose(){
+  try{
+    const payload = {
+      annee    : (yearInput?.value || '').trim() || getSchoolYear(),
+      effectifs: collectEffectifs(),
+      staff    : collectStaff()
+    };
+
+    // 1) Sauvegarde des paramètres établissement (année, effectifs, staff)
+    const res = await postJSON('/api/settings', payload);
+
+    // 2) Remplacement COMPLET des baselines du couple (année, cycle, spécialité)
+    //    => purge + réinsertion exacte de ce qu’il y a dans la modale (BSTATE)
+    await saveBaselinesReplace();
+
+    alert(res?.message || 'Paramètres enregistrés');
+    // Mets à jour le cache local
+    SETTINGS_CACHE = { ...(SETTINGS_CACHE||{}), ...payload };
+
+    // Ferme la modale et rafraîchis le résumé de droite si la fonction existe
+    closeModal(settingsModal);
+    try{ refreshSettingsSidebar?.(); }catch(_){}
+  }catch(e){
+    alert('Enregistrement paramètres: ' + (e?.message||e));
+  }
+}
+
 /***** NOUVEAU : helpers & chargeur collecte *****/
 function uniq(arr){ return [...new Set(arr.map(s => String(s||'').trim()))]; }
 async function getBaselinesCouple(cyc, spec){
@@ -1052,6 +1126,16 @@ async function buildCollecteFor(cyc, spec){
   const classLabels = [...new Set(relevantClasses.map(e => e.classe || ''))].filter(Boolean).sort();
   const annee = getSchoolYear();
   const baselines = await getBaselinesCouple(cyc, spec);
+  // Index global base -> disciplines autorisées (pour filtrer affichage/envoi)
+BASELINE_INDEX = new Map();
+(baselines||[]).forEach(b=>{
+  const base = String(b.classe||'').trim();
+  const disc = String(b.discipline||'').trim();
+  if(!base || !disc) return;
+  if(!BASELINE_INDEX.has(base)) BASELINE_INDEX.set(base, new Set());
+  BASELINE_INDEX.get(base).add(disc);
+});
+
   let collecte = null;
   try {
     collecte = await getJSON(`/api/collecte/form-ap?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cyc)}&specialite=${encodeURIComponent(spec)}`);
@@ -1069,18 +1153,27 @@ async function buildCollecteFor(cyc, spec){
       tp: +b.tpPrevus||0, tdp: +b.tpDigPrevus||0, effTot: +b.enseignantsPoste||0
     }));
 
-    const previousDisciplines = previousDataByClass.get(label);
-    if (previousDisciplines) {
-        const prevDataMap = new Map(previousDisciplines.map(d => [d.nom, d]));
-        rows.forEach(row => {
-            const prev = prevDataMap.get(row.discipline);
-            if (prev) {
-                Object.assign(row, prev);
-                prevDataMap.delete(row.discipline);
-            }
-        });
-        for (const prev of prevDataMap.values()) rows.push(prev);
+   const previousDisciplines = previousDataByClass.get(label);
+if (previousDisciplines && previousDisciplines.length) {
+  const prevMap = new Map(previousDisciplines.map(d => [String(d.nom||'').trim(), d]));
+  rows = rows.map(r=>{
+    const key = String(r.discipline||'').trim();
+    const prev = prevMap.get(key);
+    // On ne copie que les valeurs des disciplines PRÉSENTES dans la baseline
+    if(prev){
+      return {
+        ...r,
+        hF:+prev.hF||r.hF, lf:+prev.lf||r.lf, ldf:+prev.ldf||r.ldf,
+        tf:+prev.tf||r.tf,  tdf:+prev.tdf||r.tdf,
+        comp:+prev.comp||r.comp, m10:+prev.m10||r.m10,
+        effPos:+prev.effPos||r.effPos
+      };
     }
+    return r;
+  });
+  // Surtout ne pas ajouter les anciennes disciplines hors baseline
+}
+
     
     createClassBlockFromAPI(label, rows);
   });
@@ -1802,10 +1895,191 @@ const bSpec = document.getElementById('bSpec');
 const baselineClassList = document.getElementById('classList');
 const currentClassChip = document.getElementById('currentClassChip');
 const bTbody = document.getElementById('bTbody');
+// Retire les anciens boutons "Supprimer discipline" (toutes variantes hors .js-del-disc)
+function removeLegacyDeleteButtons(root = document){
+  const candidates = root.querySelectorAll(
+    '#bTbody button:not(.js-del-disc),' +                // tout bouton autre que le nouveau
+    '#bTbody [data-legacy-delete],' +                   // attribut ad hoc
+    '#bTbody button[onclick*="deleteDisc"],' +          // onclick legacy
+    '#bTbody button[onclick*="supprimerDisc"]'
+  );
+  candidates.forEach(btn=>{
+    const txt   = (btn.textContent||'').toLowerCase();
+    const title = (btn.title||'').toLowerCase();
+    if (txt.includes('supprimer') || title.includes('supprimer') || txt.includes('🗑')) {
+      btn.remove();
+    }
+  });
+  // S'il y a des icônes/ancres sans <button> :
+  root.querySelectorAll('#bTbody td').forEach(td=>{
+    if (!td.querySelector('.js-del-disc') && /🗑|supprimer/i.test(td.textContent||'')) {
+      // on supprime les éléments cliquables suspects
+      td.querySelectorAll('a,span,i,svg').forEach(el=>{
+        if(/🗑|supprimer/i.test(el.textContent||'')) el.remove();
+      });
+    }
+  });
+}
+removeLegacyDeleteButtons();
+
+// Si une réinjection recrée de vieux boutons (chargement, reset, etc), on nettoie automatiquement
+const _obsDel = new MutationObserver(muts=>{
+  for(const m of muts){
+    if(m.type==='childList') removeLegacyDeleteButtons(m.target);
+  }
+});
+if (bTbody) _obsDel.observe(bTbody, { childList:true, subtree:true });
+
+// === Récupère de façon robuste le nom de la discipline sur une ligne <tr>
+function getDiscNameFromRow(tr){
+  if(!tr) return '';
+  // 1) champ explicite
+  const field = tr.querySelector('[data-field="discipline"]');
+  if(field){
+    if('value' in field) return String(field.value||'').trim();          // input/select/textarea
+    return String(field.textContent||'').trim();                          // <td contenteditable>, <span>, etc.
+  }
+  // 2) 1ʳᵉ cellule : input/textarea/select
+  const c0 = tr.cells && tr.cells[0];
+  if(c0){
+    const ctrl = c0.querySelector('input, textarea, select');
+    if(ctrl) return String(ctrl.value||'').trim();
+    if(c0.isContentEditable || c0.getAttribute('contenteditable') === 'true'){
+      return String(c0.textContent||'').trim();
+    }
+    const txt = String(c0.textContent||'').trim();
+    if(txt) return txt;
+  }
+  // 3) fallback : n’importe quel input de la ligne
+  const any = tr.querySelector('input, textarea, select');
+  if(any) return String(any.value||'').trim();
+  return '';
+}
+
+
+// ===== suppression réelle d'une discipline (API → fallback si besoin) =====
+async function deleteBaselineDisciplineNow(classLabel, discipline){
+  const { annee, cycle, specialite } = serializeBaselines();
+  const base = splitClassLabel(classLabel||'').base;
+  const disc = String(discipline||'').trim();
+
+  if(!annee || !cycle || !specialite || !base || !disc){
+    alert("Suppression impossible : année/cycle/spécialité/classe/discipline manquants.");
+    return false;
+  }
+
+  // 1) Tentative DELETE granulaire (classe + discipline)
+  let ok = false;
+  try{
+    const url = `/api/settings/baselines?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cycle)}&specialite=${encodeURIComponent(specialite)}&classe=${encodeURIComponent(base)}&discipline=${encodeURIComponent(disc)}`;
+    const r = await fetch(url, { method:'DELETE', credentials:'same-origin' });
+    ok = r.ok; // 200/204 → OK
+  }catch(_){ /* ignore */ }
+
+  // 2) Fallback (si l'API ne supporte pas DELETE granulaire)
+  if(!ok){
+    const rows = BSTATE.get(classLabel) || [];
+    const next = rows.filter(r => String(r.discipline||'').trim() !== disc);
+    BSTATE.set(classLabel, next);
+    await saveBaselinesReplace();
+  }
+  return true;
+}
+
+// Délégation de clic sur le tableau #bTbody (bouton .js-del-disc)
+// Délégation de clic sur le tableau #bTbody (bouton .js-del-disc)
+bTbody?.addEventListener('click', async (e)=>{
+  const btn = e.target.closest('.js-del-disc');
+  if(!btn) return;
+
+  const tr = btn.closest('tr');
+  const name = getDiscNameFromRow(tr);   // ← nouveau
+
+  if(!CURRENT_CLASS){ alert("Classe courante inconnue."); return; }
+
+  // Si pas de nom : on supprime quand même localement (UI + modèle), sans aller au serveur
+  if(!name){
+    const idx = [...bTbody.children].indexOf(tr);
+    tr.remove();
+    const rows = BSTATE.get(CURRENT_CLASS) || [];
+    if(idx > -1){ rows.splice(idx,1); BSTATE.set(CURRENT_CLASS, rows); }
+    try{ renderDiscTable?.(); }catch(_){}
+    return;
+  }
+
+  if(!confirm(`Supprimer définitivement la discipline « ${name} » ?`)) return;
+
+  // 1) serveur (ou fallback auto)
+  const ok = await deleteBaselineDisciplineNow(CURRENT_CLASS, name);
+  if(!ok) return;
+
+  // 2) UI + modèle local
+  tr.remove();
+  const rows = BSTATE.get(CURRENT_CLASS) || [];
+  BSTATE.set(CURRENT_CLASS, rows.filter(r => String(r.discipline||'').trim() !== name));
+
+  // 3) rafraîchissement doux
+  try{ renderDiscTable?.(); }catch(_){}
+});
+
+
 document.getElementById('btnLoadBaselines').addEventListener('click', ()=> loadBaselines(false));
 document.getElementById('btnLoadBaselineDefaults').addEventListener('click', ()=> loadBaselines(true));
 document.getElementById('btnImportExpected').addEventListener('click', importExpectedToCurrent);
-document.getElementById('btnAddDisc').addEventListener('click', ()=> addDiscRowToCurrent({discipline:'',heuresDues:0,leconsPrevues:0,leconsDigPrevues:0,tpPrevus:0,tpDigPrevus:0,enseignantsPoste:0}));
+function addDiscRowToCurrent(row){
+  if(!CURRENT_CLASS){ alert("Sélectionnez d'abord une classe."); return; }
+
+  const tr = document.createElement('tr');
+
+  // 1) nom de discipline (éditable)
+const tdName = document.createElement('td');
+tdName.contentEditable = "true";
+tdName.setAttribute('data-field','discipline');   // ← important
+tdName.textContent = (row?.discipline || '').trim();
+tr.appendChild(tdName);
+
+  // 2) colonnes numériques (dans l'ordre de ton thead)
+  const fields = [
+    'heuresDues',
+    'leconsPrevues',
+    'leconsDigPrevues',
+    'tpPrevus',
+    'tpDigPrevus',
+    'enseignantsPoste'
+  ];
+  fields.forEach((key)=>{
+    const td = document.createElement('td');
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.min = '0';
+    inp.value = +row?.[key] || 0;
+    td.appendChild(inp);
+    tr.appendChild(td);
+  });
+
+  // 3) colonne "actions" (bouton 🗑)
+  const tdAct = document.createElement('td');
+  tdAct.innerHTML =
+    `<button type="button" class="btn danger js-del-disc" title="Supprimer cette discipline">🗑</button>`;
+  tr.appendChild(tdAct);
+
+  // 4) insérer la ligne dans le tbody
+  bTbody.appendChild(tr);
+
+  // 5) mettre à jour le modèle local (BSTATE) si tu ajoutes côté UI
+  const list = BSTATE.get(CURRENT_CLASS) || [];
+  list.push({
+    discipline: tdName.textContent.trim(),
+    heuresDues: +(tr.children[1].querySelector('input')?.value||0),
+    leconsPrevues: +(tr.children[2].querySelector('input')?.value||0),
+    leconsDigPrevues: +(tr.children[3].querySelector('input')?.value||0),
+    tpPrevus: +(tr.children[4].querySelector('input')?.value||0),
+    tpDigPrevus: +(tr.children[5].querySelector('input')?.value||0),
+    enseignantsPoste: +(tr.children[6].querySelector('input')?.value||0)
+  });
+  BSTATE.set(CURRENT_CLASS, list);
+}
+
 document.getElementById('btnAddClass').addEventListener('click', ()=> addBaselineClass(prompt('Nom de la classe :')||''));
 document.getElementById('btnRenameClass').addEventListener('click', renameBaselineClass);
 document.getElementById('btnDeleteClass').addEventListener('click', deleteBaselineClass);
@@ -1924,6 +2198,7 @@ function renderDiscTable(){
   if(!CURRENT_CLASS){ bTbody.innerHTML='<tr><td colspan="8" class="subtle">Aucune classe sélectionnée.</td></tr>'; return; }
   rows.forEach((r,idx)=> bTbody.insertAdjacentHTML('beforeend', discRowHTML(r, idx)));
   attachRowEvents();
+  ensureButtonsForAllRows?.();
 }
 function discRowHTML(r,idx){
   return `<tr data-idx="${idx}"><td><input type="text" value="${r.discipline||''}"></td><td><input type="number" min="0" value="${+r.heuresDues||0}"></td><td><input type="number" min="0" value="${+r.leconsPrevues||0}"></td><td><input type="number" min="0" value="${+r.leconsDigPrevues||0}"></td><td><input type="number" min="0" value="${+r.tpPrevus||0}"></td><td><input type="number" min="0" value="${+r.tpDigPrevus||0}"></td><td><input type="number" min="0" value="${+r.enseignantsPoste||0}"></td><td><button class="btn">🗑</button></td></tr>`;
@@ -1937,6 +2212,29 @@ function attachRowEvents(){
   });
 }
 function addDiscRowToCurrent(r){ if(!CURRENT_CLASS){ alert('Ajoutez / sélectionnez d’abord une classe.'); return; } const arr=BSTATE.get(CURRENT_CLASS)||[]; arr.push({...r}); BSTATE.set(CURRENT_CLASS,arr); renderDiscTable(); }
+// Bouton "+ Discipline" (baselines)
+document.getElementById('btnAddDisc')
+  ?.addEventListener('click', ()=> addDiscRowToCurrent({
+    discipline:'', heuresDues:0, leconsPrevues:0, leconsDigPrevues:0,
+    tpPrevus:0, tpDigPrevus:0, enseignantsPoste:0
+  }));
+
+function ensureActionCell(tr){
+  if(!tr) return;
+  const last = tr.lastElementChild;
+  const hasBtn = last && last.querySelector?.('.js-del-disc');
+  if(!hasBtn){
+    const tdAct = document.createElement('td');
+    tdAct.innerHTML = `<button type="button" class="btn danger js-del-disc" title="Supprimer cette discipline">🗑</button>`;
+    tr.appendChild(tdAct);
+  }
+}
+
+function ensureButtonsForAllRows(){
+  bTbody?.querySelectorAll('tr')?.forEach(ensureActionCell);
+}
+
+
 function addBaselineClass(name){ name=String(name||'').trim(); if(!name) return; if(BSTATE.has(name)) return alert('Classe déjà présente.'); BSTATE.set(name,[]); CURRENT_CLASS=name; renderClassList(); renderDiscTable(); }
 function renameBaselineClass(){ if(!CURRENT_CLASS) return; const n=prompt('Nouveau nom :', CURRENT_CLASS); if(!n) return; const rows=BSTATE.get(CURRENT_CLASS); BSTATE.delete(CURRENT_CLASS); BSTATE.set(n, rows); CURRENT_CLASS=n; renderClassList(); renderDiscTable(); }
 function deleteBaselineClass(){ if(!CURRENT_CLASS) return; if(!confirm(`Supprimer ${CURRENT_CLASS} ?`)) return; BSTATE.delete(CURRENT_CLASS); CURRENT_CLASS=''; renderClassList(); renderDiscTable(); }
@@ -1950,6 +2248,7 @@ async function importExpectedToCurrent(){
     const cur = new Set((BSTATE.get(CURRENT_CLASS)||[]).map(r=> (r.discipline||'').trim().toLowerCase()));
     expected.filter(n=>!cur.has(n.trim().toLowerCase())).forEach(n=> addDiscRowToCurrent({discipline:n,heuresDues:0,leconsPrevues:0,leconsDigPrevues:0,tpPrevus:0,tpDigPrevus:0,enseignantsPoste:0}));
   }catch(_){ alert('Impossible de charger le référentiel.'); }
+  ensureButtonsForAllRows?.();
 }
 function syncClassesFromEffectifs(){
   const classes = [...effTbody.querySelectorAll('tr')].map(labelFromEffRow).filter(Boolean);
@@ -2163,6 +2462,35 @@ async function loadClassesPreset(){
   }catch(_){ alert('Impossible de charger les classes par défaut.'); }
   autoSyncBaselinesFromEffectifs();
 }
+
+function collectEffectifs(){
+  const rows = [];
+  if(!effTbody) return rows;
+  [...effTbody.querySelectorAll('tr')].forEach(tr=>{
+    const classe  = (tr.querySelector('[data-field="classe"]')?.value || '').trim();
+    const filles  = +(tr.querySelector('[data-field="filles"]')?.value || 0);
+    const garcons = +(tr.querySelector('[data-field="garcons"]')?.value || 0);
+    if(classe) rows.push({ classe, filles, garcons });
+  });
+  return rows;
+}
+
+function collectStaff(){
+  const rows = [];
+  if(!staffTbody) return rows;
+  [...staffTbody.querySelectorAll('tr')].forEach(tr=>{
+    const nom     = (tr.querySelector('[data-field="nom"]')?.value || '').trim();
+    const grade   = (tr.querySelector('[data-field="grade"]')?.value || '').trim();
+    const matiere = (tr.querySelector('[data-field="matiere"]')?.value || '').trim();
+    const statut  = (tr.querySelector('[data-field="statut"]')?.value || '').trim();
+    const obs     = (tr.querySelector('[data-field="obs"]')?.value || '').trim();
+    if(nom || grade || matiere || statut || obs){
+      rows.push({ nom, grade, matiere, statut, obs });
+    }
+  });
+  return rows;
+}
+
 async function saveAllAndClose(){
   const annee = (yearInput.value||'').trim() || getSchoolYear();
   const displayed = [...effTbody.querySelectorAll('tr')].map(tr=>{

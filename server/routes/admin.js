@@ -31,6 +31,52 @@ function ensureAdmin(req, res, next) {
 
 router.use(ensureAdmin);
 
+
+// POST /admin/users  -> création
+router.post('/users', async (req, res, next) => {
+  try {
+    const {
+      nomComplet,
+      email,
+      password,
+      role = 'anim',
+      inspection = 'artsplastiques',
+      etablissement,
+      departement,
+      departementCode
+    } = req.body || {};
+
+    if (!email || !password) {
+      return res.status(400).json({ ok:false, error:'email et mot de passe requis' });
+    }
+    if (!['anim','insp','admin'].includes(String(role))) {
+      return res.status(400).json({ ok:false, error:'role invalide' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const hash = await bcrypt.hash(String(password), 12);
+
+    const u = await User.create({
+      nomComplet: String(nomComplet||'').trim(),
+      email: cleanEmail,
+      passwordHash: hash,
+      role,
+      inspection: String(inspection).toLowerCase(),
+      etablissement: String(etablissement||'').trim(),
+      departement: String(departement||'').trim(),
+      departementCode: String(departementCode||'').trim()
+    });
+
+    return res.status(201).json({ ok:true, id: String(u._id) });
+  } catch (e) {
+    if (e?.code === 11000) {
+      // index unique sur email
+      return res.status(409).json({ ok:false, error:'Cet email est déjà utilisé.' });
+    }
+    next(e);
+  }
+});
+
 /* ===== LISTE UTILISATEURS =====
    GET /admin/users?inspection=&departement=&q=
    - recherche sur nom/email/etablissement/departement (insensible à la casse)

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Paramétrage établissement – <%= (user?.etablissement || '—') %></title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --b:#d1d5db; --bg:#f7f9fc; --ink:#0f172a; --muted:#64748b; --brand:#2563eb;
+      --card:#ffffff; --soft:#f3f4f6; --ok:#16a34a; --warn:#b45309;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;background:var(--bg);color:var(--ink);
+      font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;font-size:15px;
+    }
+    .page{max-width:1280px;margin:18px auto;padding:0 14px}
+    .topbar{display:flex;gap:12px;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .title{margin:0;font-weight:800;letter-spacing:.2px}
+    .muted{color:var(--muted);font-size:12.5px}
+    .btn{border:1px solid var(--b);background:#fff;border-radius:10px;padding:9px 12px;font-size:14px;cursor:pointer}
+    .btn:hover{background:var(--soft)}
+    .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+    .btn.ghost{background:#eef2ff;border-color:#c7d2fe}
+    .btn.warn{background:#fff7ed;border-color:#fed7aa}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .grid-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+    @media (max-width:1060px){ .grid-2{grid-template-columns:1fr} }
+    .card{background:var(--card);border:1px solid var(--b);border-radius:12px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+    .card h2{margin:0 0 8px;font-size:16px;display:flex;align-items:center;gap:8px}
+    .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--b);padding:5px 11px;border-radius:999px;background:#fff;font-size:12.5px}
+    input[type=text],input[type=number],select,textarea{
+      border:1px solid var(--b);border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;width:100%;line-height:1.3
+    }
+    input[type=number]{text-align:right}
+    .w-80{width:82px}.w-100{width:104px}.w-120{width:124px}.w-140{width:144px}.w-160{width:164px}.w-200{width:204px}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+    th,td{border-bottom:1px solid #e5e7eb;padding:11px 10px;text-align:left;vertical-align:middle}
+    th{background:#f9fafb}
+    td.right,th.right{text-align:right}
+    .list{max-height:340px;overflow:auto;border:1px solid var(--b);border-radius:10px;padding:8px;background:#fff}
+    .list .item{padding:10px;border:1px solid #e5e7eb;border-radius:10px;margin:8px 0;cursor:pointer;background:#fafafa}
+    .list .item.active{border-color:var(--brand);background:#eef4ff}
+    .footer{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--b);padding:12px;margin-top:14px}
+    .footer .row{justify-content:space-between}
+    .split{display:grid;grid-template-columns:320px 1fr;gap:14px}
+    @media (max-width:1060px){ .split{grid-template-columns:1fr} }
+    .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
+    .kbd{font:11.5px/1 ui-monospace,Consolas,Menlo,monospace;background:#e2e8f0;border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:6px;padding:2px 6px}
+    .ok{color:var(--ok)} .warn{color:var(--warn)}
+  </style>
+</head>
+<body>
+<div class="page">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div>
+      <h1 class="title">Paramétrage établissement</h1>
+      <div class="muted">
+        Utilisateur : <b><%= user?.nomComplet || user?.nom || '—' %></b> — 
+        Établissement : <b><%= user?.etablissement || '—' %></b> — 
+        Inspection : <b><%= (user?.inspection||'').toUpperCase() %></b>
+      </div>
+    </div>
+    <div class="row">
+      <a class="btn" href="/collecte/nouvelle">↩ Retour collecte</a>
+      <button class="btn primary" id="btnSaveAndClose">💾 Enregistrer & fermer</button>
+    </div>
+  </div>
+
+  <!-- Bandeau -->
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-end">
+      <div class="row">
+        <div>
+          <label class="muted">Année scolaire</label><br/>
+          <input id="yearInput" class="w-160" type="text" placeholder="ex. 2025-2026">
+        </div>
+        <div>
+          <label class="muted">Cycle</label><br/>
+          <select id="selCycle" class="w-200"><option value="">—</option></select>
+        </div>
+        <div>
+          <label class="muted">Spécialité</label><br/>
+          <select id="selSpec" class="w-200" disabled><option value="">—</option></select>
+        </div>
+        <div class="chip" id="loadState">Prêt</div>
+      </div>
+      <div class="muted">
+        Astuce : commence par <b>les effectifs</b>, puis <b>les baselines</b>.  
+        Changer le couple <i>cycle / spécialité</i> recharge toutes les données.
+      </div>
+    </div>
+  </div>
+
+  <!-- Grille principale -->
+  <div class="grid-2">
+    <!-- Colonne gauche -->
+    <section class="card">
+      <h2>Classes disponibles (avec divisions)</h2>
+      <div class="row">
+        <button class="btn ghost" id="btnLoadClassesDefault">↺ Charger classes par défaut</button>
+        <button class="btn" id="btnAddBaseClass">+ Ajouter une classe</button>
+      </div>
+      <table>
+        <thead>
+        <tr>
+          <th>Classe (base)</th>
+          <th class="w-120 right">Divisions</th>
+          <th class="w-80"></th>
+        </tr>
+        </thead>
+        <tbody id="tbodyClasses"></tbody>
+      </table>
+      <div class="hint">Une division = une classe suffixée. Ex : base <b>1ère année DECO</b>, divisions <b>1,2</b> ⇒ classes <b>1ère année DECO (1)</b>, <b>(2)</b>.</div>
+
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0">
+
+      <h2>Effectifs par classe</h2>
+      <div class="row">
+        <button class="btn" id="btnSyncFromClasses">↺ Générer lignes d’effectifs depuis les classes ci-dessus</button>
+      </div>
+      <table>
+        <thead>
+        <tr>
+          <th>Classe</th>
+          <th class="w-80 right">F</th>
+          <th class="w-80 right">G</th>
+          <th class="w-80 right">Total</th>
+          <th class="w-80"></th>
+        </tr>
+        </thead>
+        <tbody id="tbodyEff"></tbody>
+      </table>
+    </section>
+
+    <!-- Colonne droite -->
+    <section class="card">
+      <h2>Personnel enseignant</h2>
+      <div class="row">
+        <button class="btn" id="btnAddStaff">+ Ajouter un enseignant</button>
+        <button class="btn ghost" id="btnOpenFullFile">📄 Fichier complet</button>
+      </div>
+      <table>
+        <thead>
+        <tr>
+          <th>Nom</th><th class="w-120">Grade</th><th class="w-160">Matière</th><th class="w-120">Statut</th><th>Obs.</th><th class="w-140"></th>
+        </tr>
+        </thead>
+        <tbody id="tbodyStaff"></tbody>
+      </table>
+
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0">
+
+      <h2>Baselines par classe / discipline</h2>
+      <div class="split">
+        <!-- Liste classes -->
+        <div>
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <div class="muted">Classes (sélection)</div>
+            <div class="row">
+              <button class="btn ghost" id="btnLoadBaselinesExisting">↻ Charger existants</button>
+              <button class="btn" id="btnLoadBaselinesDefaults">↺ Charger défauts</button>
+            </div>
+          </div>
+          <div id="classList" class="list" style="margin-top:8px"></div>
+          <div class="row" style="margin-top:8px">
+            <button class="btn" id="btnAddOneClass">+ Classe</button>
+            <button class="btn warn" id="btnDelOneClass">🗑 Supprimer</button>
+          </div>
+        </div>
+
+        <!-- Table des disciplines -->
+        <div>
+          <div class="row" style="margin-bottom:8px;justify-content:space-between">
+            <span id="currentClassChip" class="chip">—</span>
+            <button class="btn" id="btnAddDisc">+ Discipline</button>
+          </div>
+          <table>
+            <thead>
+            <tr>
+              <th>Discipline</th>
+              <th class="w-100 right">Heures dues</th>
+              <th class="w-120 right">Leçons prévues</th>
+              <th class="w-140 right">Leçons dig. prév.</th>
+              <th class="w-100 right">TP prév.</th>
+              <th class="w-140 right">TP dig. prév.</th>
+              <th class="w-120 right">Ens. en poste</th>
+              <th class="w-80"></th>
+            </tr>
+            </thead>
+            <tbody id="tbodyBaseline"></tbody>
+          </table>
+          <div class="hint">S’il n’y a aucune discipline en base, clique <span class="kbd">Charger défauts</span> puis ajuste.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="row">
+      <div class="muted">Les changements non enregistrés seront perdus.</div>
+      <div class="row">
+        <a class="btn" href="/collecte/nouvelle">↩ Retour collecte</a>
+        <button class="btn primary" id="btnSaveBottom">💾 Enregistrer & fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====================== Contexte utilisateur (EJS) ====================== */
+const CONNECTED_USER = <%- JSON.stringify({
+  nom: user?.nomComplet || user?.nom || '',
+  etab: user?.etablissement || '',
+  inspection: (user?.inspection || 'artsplastiques').toLowerCase()
+}) %>;
+
+/* ============================ Sélecteurs ============================ */
+const yearInput = document.getElementById('yearInput');
+const selCycle  = document.getElementById('selCycle');
+const selSpec   = document.getElementById('selSpec');
+const loadState = document.getElementById('loadState');
+
+const tbodyClasses   = document.getElementById('tbodyClasses');
+const tbodyEff       = document.getElementById('tbodyEff');
+const tbodyStaff     = document.getElementById('tbodyStaff');
+const classList      = document.getElementById('classList');
+const tbodyBaseline  = document.getElementById('tbodyBaseline');
+const currentClassChip = document.getElementById('currentClassChip');
+
+/* =============================== Boutons =============================== */
+const btnLoadClassesDefault   = document.getElementById('btnLoadClassesDefault');
+const btnAddBaseClass         = document.getElementById('btnAddBaseClass');
+const btnSyncFromClasses      = document.getElementById('btnSyncFromClasses');
+const btnAddStaff             = document.getElementById('btnAddStaff');
+const btnOpenFullFile         = document.getElementById('btnOpenFullFile');
+const btnLoadBaselinesExisting= document.getElementById('btnLoadBaselinesExisting');
+const btnLoadBaselinesDefaults= document.getElementById('btnLoadBaselinesDefaults');
+const btnAddOneClass          = document.getElementById('btnAddOneClass');
+const btnDelOneClass          = document.getElementById('btnDelOneClass');
+const btnAddDisc              = document.getElementById('btnAddDisc');
+const btnSaveAndClose         = document.getElementById('btnSaveAndClose');
+const btnSaveBottom           = document.getElementById('btnSaveBottom');
+
+/* =============================== Utils =============================== */
+function getSchoolYear(){ const d=new Date(), y=d.getFullYear(), m=d.getMonth(); return (m>=7)? `${y}-${y+1}` : `${y-1}-${y}`; }
+function _clean(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
+function makeClassLabel(base, division){ base=_clean(base); return (division && division!==1) ? `${base} (${division})` : base; }
+async function getJSON(u){ const r=await fetch(u,{credentials:'same-origin'}); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+async function postJSON(u,body){ const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d?.error||('HTTP '+r.status)); return d; }
+function setBusy(msg){ loadState.textContent = msg || '…'; loadState.classList.remove('ok','warn'); }
+function setDone(msg){ loadState.textContent = msg || 'OK'; loadState.classList.add('ok'); loadState.classList.remove('warn'); }
+function setWarn(msg){ loadState.textContent = msg || '⚠'; loadState.classList.add('warn'); loadState.classList.remove('ok'); }
+
+/* ============================== État local ============================== */
+let CLASSES = [];     // [{ base, divisions:[1,2,...] }]
+let EFFECTIFS = [];   // [{ classe, F, G }]
+let BASELINES = new Map(); // classe -> [{...}]
+let STAFF = [];       // [{ nom, grade, ... }]
+let CURRENT_CLASS = '';
+
+/* ============================== Renderers ============================== */
+function renderClasses(){
+  tbodyClasses.innerHTML = '';
+  CLASSES.forEach((c,idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${c.base||''}" data-k="base" placeholder="ex. 2ème Année DECO"></td>
+      <td class="right"><input type="text" value="${(c.divisions||[1]).join(', ')}" class="w-120" data-k="divs" placeholder="1, 2, 3"></td>
+      <td><button class="btn warn" data-act="del">🗑</button></td>`;
+    tr.querySelector('[data-k="base"]').addEventListener('input', e=>{ c.base = e.target.value; });
+    tr.querySelector('[data-k="divs"]').addEventListener('input', e=>{
+      c.divisions = String(e.target.value).split(',').map(s=>parseInt(s,10)).filter(n=>!isNaN(n)&&n>0);
+    });
+    tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{ CLASSES.splice(idx,1); renderClasses(); renderClassList(); });
+    tbodyClasses.appendChild(tr);
+  });
+}
+
+function renderEffectifs(){
+  tbodyEff.innerHTML = '';
+  EFFECTIFS.forEach((r,idx)=>{
+    const tr = document.createElement('tr');
+    const F = Number.isFinite(+r.F)? +r.F : 0;
+    const G = Number.isFinite(+r.G)? +r.G : 0;
+    tr.innerHTML = `
+      <td>${r.classe}</td>
+      <td class="right"><input type="number" min="0" class="w-80" value="${F}" data-k="F"/></td>
+      <td class="right"><input type="number" min="0" class="w-80" value="${G}" data-k="G"/></td>
+      <td class="right"><span>${F+G}</span></td>
+      <td><button class="btn warn">🗑</button></td>`;
+    const update = () => {
+      r.F = +tr.querySelector('[data-k="F"]').value || 0;
+      r.G = +tr.querySelector('[data-k="G"]').value || 0;
+      tr.querySelector('td:nth-child(4) span').textContent = r.F + r.G;
+    };
+    tr.querySelector('[data-k="F"]').addEventListener('input', update);
+    tr.querySelector('[data-k="G"]').addEventListener('input', update);
+    tr.querySelector('button').addEventListener('click', ()=>{ EFFECTIFS.splice(idx,1); renderEffectifs(); });
+    tbodyEff.appendChild(tr);
+  });
+}
+
+function renderStaff(){
+  tbodyStaff.innerHTML = '';
+  STAFF.forEach((p,idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${p.nom||''}" data-k="nom" placeholder="NOM"/></td>
+      <td><input type="text" value="${p.grade||''}" class="w-120" data-k="grade" placeholder="Grade"/></td>
+      <td><input type="text" value="${p.matiere||''}" class="w-160" data-k="matiere" placeholder="Matière"/></td>
+      <td><input type="text" value="${p.statut||''}" class="w-120" data-k="statut" placeholder="Statut"/></td>
+      <td><input type="text" value="${p.obs||''}" data-k="obs" placeholder="Obs."/></td>
+      <td class="right">
+        <button class="btn" data-act="fiche">🗎 Fiche</button>
+        <button class="btn warn" data-act="del">🗑</button>
+      </td>`;
+    tr.querySelectorAll('input').forEach(inp=> inp.addEventListener('input', e=>{ p[e.target.dataset.k] = e.target.value; }));
+    tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{ STAFF.splice(idx,1); renderStaff(); });
+    tr.querySelector('[data-act="fiche"]').addEventListener('click', ()=> openTeacherCard(p));
+    tbodyStaff.appendChild(tr);
+  });
+}
+
+function renderClassList(){
+  classList.innerHTML = '';
+  const names = [...new Set([
+    ...CLASSES.flatMap(c => (c.divisions?.length? c.divisions : [1]).map(d=>makeClassLabel(c.base,d))),
+    ...BASELINES.keys()
+  ])].filter(Boolean).sort((a,b)=>a.localeCompare(b,'fr'));
+  if(!CURRENT_CLASS) CURRENT_CLASS = names[0] || '';
+  names.forEach(name=>{
+    const div = document.createElement('div');
+    div.className = 'item'+(name===CURRENT_CLASS?' active':''), div.textContent = name;
+    div.addEventListener('click', ()=>{ CURRENT_CLASS = name; renderClassList(); renderBaselineTable(); });
+    classList.appendChild(div);
+  });
+  currentClassChip.textContent = CURRENT_CLASS || '—';
+}
+
+function renderBaselineTable(){
+  tbodyBaseline.innerHTML = '';
+  const rows = BASELINES.get(CURRENT_CLASS) || [];
+  const list = rows.length ? rows : [{discipline:'',heuresDues:0,leconsPrevues:0,leconsDigPrevues:0,tpPrevus:0,tpDigPrevus:0,enseignantsPoste:0}]; // une ligne 0 par défaut
+  list.forEach((r,idx)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input data-f="discipline" type="text" value="${r.discipline||''}" placeholder="ex. ANATC" /></td>
+      <td class="right"><input data-f="heuresDues" type="number" min="0" value="${+r.heuresDues||0}" /></td>
+      <td class="right"><input data-f="leconsPrevues" type="number" min="0" value="${+r.leconsPrevues||0}" /></td>
+      <td class="right"><input data-f="leconsDigPrevues" type="number" min="0" value="${+r.leconsDigPrevues||0}" /></td>
+      <td class="right"><input data-f="tpPrevus" type="number" min="0" value="${+r.tpPrevus||0}" /></td>
+      <td class="right"><input data-f="tpDigPrevus" type="number" min="0" value="${+r.tpDigPrevus||0}" /></td>
+      <td class="right"><input data-f="enseignantsPoste" type="number" min="0" value="${+r.enseignantsPoste||0}" /></td>
+      <td><button class="btn warn">🗑</button></td>`;
+    tr.querySelector('button').addEventListener('click', ()=>{
+      const arr = BASELINES.get(CURRENT_CLASS) || [];
+      if (arr.length){ arr.splice(idx,1); BASELINES.set(CURRENT_CLASS, arr); }
+      renderBaselineTable();
+    });
+    tbodyBaseline.appendChild(tr);
+  });
+}
+
+/* ======================== Collecte & helpers ======================== */
+function collectBaselinesFor(cl){
+  const arr = [];
+  tbodyBaseline.querySelectorAll('tr').forEach(tr=>{
+    const g = k => tr.querySelector(`[data-f="${k}"]`)?.value || '';
+    const row = {
+      classe: cl,
+      discipline: _clean(g('discipline')),
+      heuresDues: +g('heuresDues')||0,
+      leconsPrevues: +g('leconsPrevues')||0,
+      leconsDigPrevues: +g('leconsDigPrevues')||0,
+      tpPrevus: +g('tpPrevus')||0,
+      tpDigPrevus: +g('tpDigPrevus')||0,
+      enseignantsPoste: +g('enseignantsPoste')||0
+    };
+    // même si discipline vide, on laisse 0 visibles mais on n’enverra pas cette ligne
+    if(row.discipline) arr.push(row);
+  });
+  return arr;
+}
+
+function openTeacherCard(p){
+  // 👉 branche ici ta modale “fiche enseignant”
+  // Exemple :
+  // window.location.href = `/personnel/fiche?nom=${encodeURIComponent(p.nom||'')}`;
+  alert(`Fiche enseignant : ${p.nom||'—'} (branche à ta modale)`);
+}
+
+/* ============================ Actions UI ============================ */
+btnAddBaseClass.addEventListener('click', ()=>{ CLASSES.push({ base:'', divisions:[1] }); renderClasses(); renderClassList(); });
+btnLoadClassesDefault.addEventListener('click', async ()=>{
+  const { annee, cycle, spec } = getContext(); if(!annee||!cycle||!spec) return alert('Sélectionnez année, cycle, spécialité.');
+  try{
+    setBusy('Défauts classes…');
+    const r = await getJSON(`/api/parametrage/defaults/classes?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cycle)}&specialite=${encodeURIComponent(spec)}`);
+    CLASSES = Array.isArray(r?.classes) ? r.classes : [];
+    renderClasses(); renderClassList(); setDone(`${cycle} / ${spec}`);
+  }catch(e){ setWarn('Erreur classes'); alert('Chargement classes par défaut: '+(e.message||e)); }
+});
+btnSyncFromClasses.addEventListener('click', ()=>{
+  const labels = [];
+  CLASSES.forEach(c=> (c.divisions?.length? c.divisions : [1]).forEach(d=> labels.push(makeClassLabel(c.base,d))));
+  const had = new Set(EFFECTIFS.map(x=>x.classe));
+  labels.forEach(l => { if(!had.has(l)) EFFECTIFS.push({ classe:l, F:0, G:0 }); });
+  EFFECTIFS = EFFECTIFS.filter(r=> labels.includes(r.classe));
+  renderEffectifs(); renderClassList();
+});
+
+btnAddStaff.addEventListener('click', ()=>{ STAFF.push({nom:'',grade:'',matiere:'',statut:'',obs:''}); renderStaff(); });
+btnOpenFullFile.addEventListener('click', ()=> alert('Ouvrir le fichier complet du personnel (connecte ta modale).'));
+btnAddOneClass.addEventListener('click', ()=>{
+  const base = prompt('Nom de la classe (base) :','1ère année DECO'); if(!base) return;
+  const div = Number(prompt('Division (1 par défaut):','1'))||1;
+  const label = makeClassLabel(base, div);
+  if(!BASELINES.has(label)) BASELINES.set(label, []);
+  CURRENT_CLASS = label; renderClassList(); renderBaselineTable();
+});
+btnDelOneClass.addEventListener('click', ()=>{
+  if(!CURRENT_CLASS) return;
+  if(confirm(`Supprimer ${CURRENT_CLASS} des baselines ?`)){
+    BASELINES.delete(CURRENT_CLASS);
+    CURRENT_CLASS = [...BASELINES.keys()][0] || '';
+    renderClassList(); renderBaselineTable();
+  }
+});
+btnAddDisc.addEventListener('click', ()=>{
+  if(!CURRENT_CLASS){ alert('Choisissez une classe.'); return; }
+  const rows = BASELINES.get(CURRENT_CLASS) || [];
+  rows.push({ discipline:'', heuresDues:0, leconsPrevues:0, leconsDigPrevues:0, tpPrevus:0, tpDigPrevus:0, enseignantsPoste:0 });
+  BASELINES.set(CURRENT_CLASS, rows); renderBaselineTable();
+});
+
+/* =============================== SAVE =============================== */
+async function saveAndClose(){
+  if(CURRENT_CLASS){ BASELINES.set(CURRENT_CLASS, collectBaselinesFor(CURRENT_CLASS)); }
+  const { annee, cycle, spec } = getContext();
+  if(!annee || !cycle || !spec) return alert('Sélectionnez année, cycle, spécialité.');
+
+  // sérialisation baselines (on n’envoie que les lignes avec discipline)
+  const allBaselines = [];
+  for(const [cl, list] of BASELINES.entries()){
+    (list||[]).forEach(r => allBaselines.push({ ...r, classe: cl }));
+  }
+
+  try{
+    setBusy('Enregistrement…');
+    await postJSON('/api/parametrage/save', {
+      annee, cycle, specialite:spec,
+      classes: CLASSES,
+      effectifs: EFFECTIFS.map(x=>({ classe:x.classe, F:+x.F||0, G:+x.G||0 })),
+      baselines: allBaselines,
+      staff: STAFF
+    });
+    setDone('Enregistré');
+    alert('Paramètres enregistrés.');
+    window.location.href = '/collecte/nouvelle';
+  }catch(e){ setWarn('Erreur save'); alert('Enregistrement: '+(e.message||e)); }
+}
+btnSaveAndClose.addEventListener('click', saveAndClose);
+btnSaveBottom.addEventListener('click', saveAndClose);
+
+/* =================== Chargement structure + données =================== */
+function getContext(){ return {
+  annee: (yearInput.value||'').trim() || getSchoolYear(),
+  cycle: selCycle.value,
+  spec: (selSpec.value||'').toUpperCase()
+}; }
+
+async function loadStructure(){
+  const data = await getJSON('/api/parametrage/structure'); // { cycles:[{key,label,specialites[]}] }
+  const cycles = Array.isArray(data?.cycles) ? data.cycles : [];
+  selCycle.innerHTML = '<option value="">—</option>';
+  cycles.forEach(c=>{ const opt=document.createElement('option'); opt.value=c.key; opt.textContent=c.label||c.key; selCycle.appendChild(opt); });
+  selCycle.addEventListener('change', ()=>{
+    const c = cycles.find(x=> x.key === selCycle.value);
+    selSpec.innerHTML = '<option value="">—</option>'; selSpec.disabled = !c;
+    if(!c) return;
+    c.specialites.forEach(sp=>{ const o=document.createElement('option'); o.value=sp; o.textContent=sp; selSpec.appendChild(o); });
+  });
+}
+
+function clearAll(){
+  CLASSES = []; EFFECTIFS = []; STAFF = []; BASELINES = new Map(); CURRENT_CLASS = '';
+  renderClasses(); renderEffectifs(); renderStaff(); renderClassList(); renderBaselineTable();
+}
+
+async function loadAllForContext(){
+  const { annee, cycle, spec } = getContext();
+  if(!annee || !cycle || !spec){ setWarn('Sélection incomplète'); return; }
+  try{
+    setBusy(`Chargement ${cycle} / ${spec}…`);
+    clearAll(); // 👉 on purge avant d’injecter les nouvelles données (couple respecté)
+    const r = await getJSON(`/api/parametrage/load?annee=${encodeURIComponent(annee)}&cycle=${encodeURIComponent(cycle)}&specialite=${encodeURIComponent(spec)}`);
+
+    CLASSES = Array.isArray(r?.classes) ? r.classes : [];
+    EFFECTIFS = Array.isArray(r?.effectifs) ? r.effectifs.map(e=>({classe:e.classe, F:+e.F||0, G:+e.G||0})) : [];
+    STAFF = Array.isArray(r?.staff) ? r.staff : [];
+
+    renderClasses(); renderEffectifs(); renderStaff();
+
+    BASELINES = new Map();
+    (r?.baselines||[]).forEach(b=>{
+      const cl = _clean(b.classe||''); if(!cl) return;
+      if(!BASELINES.has(cl)) BASELINES.set(cl, []);
+      BASELINES.get(cl).push({
+        classe: cl, discipline: b.discipline||'',
+        heuresDues:+b.heuresDues||0, leconsPrevues:+b.leconsPrevues||0, leconsDigPrevues:+b.leconsDigPrevues||0,
+        tpPrevus:+b.tpPrevus||0, tpDigPrevus:+b.tpDigPrevus||0, enseignantsPoste:+b.enseignantsPoste||0
+      });
+    });
+    CURRENT_CLASS = [...BASELINES.keys()][0] || '';
+    renderClassList(); renderBaselineTable();
+    setDone(`${cycle} / ${spec} chargés`);
+  }catch(e){
+    setWarn('Erreur chargement'); alert('Erreur de chargement: '+(e.message||e));
+  }
+}
+
+/* =============================== Init =============================== */
+(async function init(){
+  try{
+    yearInput.value = getSchoolYear();
+    await loadStructure();
+    selCycle.addEventListener('change', loadAllForContext);
+    selSpec.addEventListener('change', loadAllForContext);
+  }catch(e){ console.warn('init failed:', e); setWarn('Init échouée'); }
+})();
+</script>
+</body>
+</html>
