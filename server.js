@@ -67,34 +67,24 @@ const EXPECTED_BY_SPEC = {
   AF3 : ['Technologie des matériaux',"Histoire de l'art",'Atelier AF3','Sculpture sur bois','Modelage','Croquis de sculpture']
 };
 
-// Helpers côté serveur (placer en haut du fichier)
-function _clean(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
-function splitClassLabel(label){
-  const raw=_clean(label);
-  const m = raw.match(/\s*(?:\(|#|-|\/)\s*(\d+)\s*\)?\s*$/);
-  if(!m) return { base: raw, division: 1, label: raw };
-  const div = Number(m[1]||'1')||1;
-  const base = _clean(raw.slice(0, m.index));
-  return { base, division: div, label: `${base} (${div})` };
-}
-
-
 /* ===== Helpers agrégations ===== */
 const TRI  = { T1:[1,2], T2:[3,4], T3:[5,6] };
 const pct  = (den,num)=> den ? Number(((num/den)*100).toFixed(2)) : 0;
 const norm = s => String(s ?? '').trim();
 const normStrict = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,'').trim();
 
-// === normaliseur de libellés (discipline) ===
-function discKey(s){
-  return String(s||'')
-    .replace(/\u00A0/g,' ')                     // espaces insécables
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // accents
-    .replace(/\s+/g,' ')                        // espaces multiples → un
-    .trim()
-    .toUpperCase();
-}
 
+// 👇 AJOUTER ICI (global, une seule fois)
+function splitClassLabel(label){
+  const raw0 = String(label || '')
+    .replace(/\u00A0/g, ' ')      // remplace les espaces insécables
+    .replace(/\s+/g, ' ')         // normalise les espaces multiples
+    .trim();
+  // repère "(2)", "#2", "/2", "-2", "div 2", "division 2", "section 2", ou suffixes G/S + chiffre
+  const m = raw0.match(/\s*(?:\(|#|\/|-|\bdiv(?:ision)?\b|\bsection\b|[GgSs])\s*(\d+)\s*\)?\s*$/u);
+  if (!m) return { base: raw0, division: 1 };
+  return { base: raw0.slice(0, m.index).trim(), division: Number(m[1] || '1') || 1 };
+}
 
 function emptyTotals(){
   return { Hd:0,Hf:0, Lp:0,Lf:0, Ldp:0,Ldf:0, Tp:0,Tf:0, Tdp:0,Tdf:0, Comp:0,M10:0, EffT:0,EffP:0 };
@@ -174,8 +164,16 @@ function keyOf(label){
 function buildFormViewForClass(fiches, expectedList, classeName, expectedEvalCount = 6) {
   const expected = Array.isArray(expectedList) ? expectedList : [];
   const expectedOrder = new Map(expected.map((n, i) => [n, i]));
+
+  // --- base pour les comparaisons strictes (sans espaces/accents)
   const wantedBase = normStrict(splitClassLabel(classeName).base);
-  const isFirstYearClass = /^(?:1|1ere|1re|premiere)\b/.test(wantedBase);
+
+  // --- NE PAS utiliser normStrict pour détecter "1ère année"
+  //     (on garde les espaces, on enlève juste les accents et on met en minuscule)
+  const baseRaw  = splitClassLabel(classeName).base || '';
+  const baseNorm = baseRaw.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const isFirstYearClass = /^(?:1(?:ere|re)?|premiere)\b/.test(baseNorm);
+
 
   // ---- 1) ne garder que le DERNIER dépôt par (etab|anim)
   const latest = new Map();
@@ -292,34 +290,49 @@ const incoherences = [...unionAll]
   .sort((a, b) => (a.coverage - b.coverage) || a.nom.localeCompare(b.nom, 'fr'));
 
 
-  // ---- 4) Construction des lignes affichées: uniquement les disciplines communes
-  const rows = Object.entries(perDisc)
-    .filter(([KEY]) => {
-      if (KEY === 'TECHNOLOGIE' && !isFirstYearClass) {
-        return false;
-      }
-      return common.has(KEY);
-    })
-    .map(([_, obj]) => {
-      const P = packTotals(obj.totals);
-      return { nom: obj.label, ...P };
-    })
-    .sort((a, b) => {
-      const ai = expectedOrder.has(a.nom) ? expectedOrder.get(a.nom) : 1e9;
-      const bi = expectedOrder.has(b.nom) ? expectedOrder.get(b.nom) : 1e9;
-      if (ai !== bi) return ai - bi;
-      return a.nom.localeCompare(b.nom, 'fr');
-    });
+  
+  // ---- 4) Construction des lignes affichées : exclure les disciplines incohérentes
+// (= présentes dans au moins un dépôt mais pas tous)
+const incoherentKeys = new Set(
+  [...(function* () {
+    for (const KEY of unionAll) {
+      const cnt = countAll.get(KEY) || 0;
+      if (totalAll > 0 && cnt > 0 && cnt < totalAll) yield KEY; // incohérent
+    }
+  })()]
+);
 
-  // total = somme des lignes retenues
-  const totalT = rows.reduce((T, r) => {
-    const back = {
-      Hd: r.Hd, Hf: r.Hf, Lp: r.Lp, Lf: r.Lf, Ldp: r.Ldp, Ldf: r.Ldf,
-      Tp: r.Tp, Tf: r.Tf, Tdp: r.Tdp, Tdf: r.Tdf, Comp: r.Comp, M10: r.M10, EffT: r.EffT, EffP: r.EffP
-    };
-    addTotals(T, back);
-    return T;
-  }, emptyTotals());
+const rows = Object.entries(perDisc)
+  .filter(([KEY]) => {
+    // Exception : cacher TECHNOLOGIE pour les classes ≠ 1ère année
+    if (KEY === 'TECHNOLOGIE' && !isFirstYearClass) return false;
+
+    // Si tu veux forcer TECHNOLOGIE à s'afficher en 1ère année même incohérente, dé-commente :
+    // if (KEY === 'TECHNOLOGIE' && isFirstYearClass) return (countAll.get(KEY) || 0) >= 1;
+
+    // Règle générale : garder uniquement les disciplines cohérentes (couverture 100 %)
+    return !incoherentKeys.has(KEY);
+  })
+  .map(([, obj]) => {
+    const P = packTotals(obj.totals);
+    return { nom: obj.label, ...P };
+  })
+  .sort((a, b) => {
+    const ai = expectedOrder.has(a.nom) ? expectedOrder.get(a.nom) : 1e9;
+    const bi = expectedOrder.has(b.nom) ? expectedOrder.get(b.nom) : 1e9;
+    if (ai !== bi) return ai - bi;
+    return a.nom.localeCompare(b.nom, 'fr');
+  });
+
+// total = somme des lignes retenues (les incohérentes n'étant plus dans rows, elles ne faussent plus les stats)
+const totalT = rows.reduce((T, r) => {
+  const back = {
+    Hd: r.Hd, Hf: r.Hf, Lp: r.Lp, Lf: r.Lf, Ldp: r.Ldp, Ldf: r.Ldf,
+    Tp: r.Tp, Tf: r.Tf, Tdp: r.Tdp, Tdf: r.Tdf, Comp: r.Comp, M10: r.M10, EffT: r.EffT, EffP: r.EffP
+  };
+  addTotals(T, back);
+  return T;
+}, emptyTotals());
 
   return {
     classe: splitClassLabel(classeName).base,
@@ -333,93 +346,25 @@ const incoherences = [...unionAll]
 
 
 /* ===== Vue AP (baselines) ===== */
-// ─── server.js → buildAPForm STRICT (respecte la modale) ───
 async function buildAPForm({ inspection, etablissement, annee, cycle, specialite }) {
   const SPEC = String(specialite).toUpperCase();
-  const insp = String(inspection).toLowerCase();
-
-  // 0) Paramétrage établissement
-  const Sdoc = await Settings.findOne({ inspection: insp, etablissement, annee }).lean();
-
-  // 1) Bases de classe autorisées pour ce couple (cycle/spécialité)
-  //    On lit le preset pour filtrer les effectifs multi-spécialités.
-  const preset = await SpecPreset.findOne({ inspection: insp, cycle, specialite: SPEC }).lean();
-  const allowedBases = new Set(
-    (preset?.classes || CLASSES_BY_SPEC[SPEC] || [])
-      .map(c => splitClassLabel(c).base.trim())
-      .filter(Boolean)
-  );
-
-  // 2) Construire la liste de classes (avec divisions) depuis Settings.effectifs,
-  //    mais en NE GARDANT QUE celles dont la base ∈ allowedBases.
+  const S = await Settings.findOne({ inspection, etablissement, annee }).lean();
   let classes = [];
-  if (Array.isArray(Sdoc?.effectifs) && Sdoc.effectifs.length) {
-    for (const e of Sdoc.effectifs) {
-      // V1
-      if (e?.classe) {
-        const label = String(e.classe).trim();
-        const base  = splitClassLabel(label).base.trim();
-        if (label && allowedBases.has(base)) classes.push(label);
-        continue;
-      }
-      // V2 (canonical + divisions / effectifs[])
-      const base = String(e?.canonicalClass || '').trim();
-      if (!base || !allowedBases.has(base)) continue;
-      const divCount =
-        Number(e?.divisions) ||
-        (Array.isArray(e?.effectifs) ? e.effectifs.length : 1) || 1;
-      for (let i = 1; i <= divCount; i++) {
-        classes.push(i === 1 ? base : `${base} (${i})`);
-      }
-    }
+  if (Array.isArray(S?.effectifs) && S.effectifs.length) {
+    classes = [...new Set(S.effectifs.map(e => String(e.classe||'').trim()).filter(Boolean))];
+  }
+  if (!classes.length) {
+    const preset = await SpecPreset.findOne({ inspection, cycle, specialite:SPEC }).lean();
+    classes = preset?.classes || (CLASSES_BY_SPEC[SPEC] || []);
   }
 
-  // 2bis) Si aucun effectif paramétré → on prend au moins les bases autorisées (division 1)
-  if (!classes.length && allowedBases.size) {
-    classes = Array.from(allowedBases.values());
-  }
+  const discs = await Catalog.find({ inspection, cycle, specialite:SPEC, actif:true }).sort({ ordre:1, nom:1 }).lean();
+  const expected = discs.length ? discs.map(d=>d.nom) : (EXPECTED_BY_SPEC[SPEC] || []);
 
-  // unicité + tri humain
-  classes = [...new Set(classes)].filter(Boolean).sort((a,b)=>a.localeCompare(b,'fr'));
-
- // 3) Disciplines ATTENDUES (STRICT) : uniquement celles saisies dans la modale
-//    (Settings.disciplinesByClass). Si une classe est saisie avec [], on respecte le vide.
-const perClassDiscFull = new Map(); // KEY = FULL (division incluse)
-const perClassDiscBase = new Map(); // KEY = BASE (sans division)
-
-if (Array.isArray(Sdoc?.disciplinesByClass)) {
-  for (const row of Sdoc.disciplinesByClass) {
-    const full = String(row?.classe || row?.canonicalClass || '').trim();
-    const base = splitClassLabel(full).base;
-    const list = Array.isArray(row?.disciplines)
-      ? row.disciplines.map(s => String(s).trim()).filter(s => s.length >= 0) // on conserve [] tel quel
-      : [];
-
-    if (full) perClassDiscFull.set(full.toUpperCase(), list); // ✅ on enregistre même si list.length === 0
-    if (base) perClassDiscBase.set(base.toUpperCase(), list); // ✅ idem
-  }
-}
-
-// --- Fallback global si AUCUNE entrée n'existe pour cette classe/base
-const discsForFallback = await Catalog.find({
-  inspection: insp,
-  cycle: String(cycle),
-  specialite: SPEC,
-  actif: true
-}).sort({ ordre: 1, nom: 1 }).lean();
-
-const expectedGlobal = discsForFallback.length
-  ? discsForFallback.map(d => d.nom)
-  : (EXPECTED_BY_SPEC[SPEC] || []);
-
-  // 4) Baselines : valeurs “dues” par (classe, discipline)
-  const B = await Baseline.find({ etablissement, annee, cycle, specialite: SPEC }).lean();
-  const bFull = new Map(); // `${full}::${disc}` -> baseline normalisée
-  const bBase = new Map(); // `${base}::${disc}` -> baseline normalisée
+  const B = await Baseline.find({ etablissement, annee, cycle, specialite:SPEC }).lean();
+  const key = (c,d)=> `${norm(c)}::${norm(d)}`;
+  const bMap = new Map();
   for (const b of B) {
-    const full = String(b.classe || '').trim();
-    const base = splitClassLabel(full).base.trim();
-    const disc = String(b.discipline || '').trim();
     const normB = {
       heuresDues        : Number(b.heuresDues        ?? b.Hd        ?? 0),
       leconsPrevues     : Number(b.leconsPrevues     ?? b.Lp        ?? 0),
@@ -428,56 +373,28 @@ const expectedGlobal = discsForFallback.length
       tpDigPrevus       : Number(b.tpDigPrevus       ?? b.Tdp       ?? 0),
       enseignantsPoste  : Number(b.enseignantsPoste  ?? b.ensPoste  ?? 0),
     };
-    if (full && disc) bFull.set(`${full}::${disc}`, normB);
-    if (base && disc) bBase.set(`${base}::${disc}`, normB);
-  }
-  const baselineFor = (classeLabel, discipline) => {
-    const fullKey = `${String(classeLabel).trim()}::${String(discipline).trim()}`;
-    const baseKey = `${splitClassLabel(classeLabel).base.trim()}::${String(discipline).trim()}`;
-    return bFull.get(fullKey) || bBase.get(baseKey) || null;
-  };
-
-  // 5) Composer la réponse STRICTE : pour chaque classe, on ne sort
-  //    QUE les disciplines paramétrées dans la modale pour sa base.
-  const classesOut = classes.map(cl => {
-  const fullKey = String(cl).toUpperCase();
-  const baseKey = splitClassLabel(cl).base.toUpperCase();
-
-  // ✅ priorité: FULL si présent (même si []), sinon BASE si présent (même si []), sinon fallback global
-  let expected;
-  if (perClassDiscFull.has(fullKey)) {
-    expected = perClassDiscFull.get(fullKey);
-  } else if (perClassDiscBase.has(baseKey)) {
-    expected = perClassDiscBase.get(baseKey);
-  } else {
-    expected = expectedGlobal;
+    bMap.set(key(b.classe,b.discipline), normB);
   }
 
-  const lines = (expected || []).map(name => {
-    const b = baselineFor(cl, name) || {};
-    return {
-      discipline: name,
-      hD : Number(b.heuresDues)||0,
-      lp : Number(b.leconsPrevues)||0,
-      ldp: Number(b.leconsDigPrevues)||0,
-      tp : Number(b.tpPrevus)||0,
-      tdp: Number(b.tpDigPrevus)||0,
-      effTot: Number(b.enseignantsPoste)||0,
-      hF:0, lf:0, ldf:0, tf:0, tdf:0, comp:0, m10:0, effPos:0
-    };
-  });
+  const classesOut = classes.map(cl => ({
+    classe: cl,
+    disciplines: expected.map(name => {
+      const b = bMap.get(key(cl,name)) || {};
+      return {
+        discipline: name,
+        hD : Number(b.heuresDues)||0,
+        lp : Number(b.leconsPrevues)||0,
+        ldp: Number(b.leconsDigPrevues)||0,
+        tp : Number(b.tpPrevus)||0,
+        tdp: Number(b.tpDigPrevus)||0,
+        effTot: Number(b.enseignantsPoste)||0,
+        hF:0, lf:0, ldf:0, tf:0, tdf:0, comp:0, m10:0, effPos:0
+      };
+    })
+  }));
 
-  return { classe: cl, disciplines: lines };
-});
-
-  // 6) Optionnel : si tu veux VRAIMENT masquer les classes sans discipline paramétrée,
-  //    dé-commente la ligne suivante :
-  // const filteredOut = classesOut.filter(c => (c.disciplines||[]).length);
-
-  return { classes: classesOut, expected: [] }; // expected vide car on est en mode STRICT
+  return { classes: classesOut, expected };
 }
-
-
 
 /* ======================= Bootstrap ======================= */
 (async ()=>{
@@ -488,38 +405,24 @@ const expectedGlobal = discsForFallback.length
   await seedAdmin();
 
   const app    = express();
-
-// derrière un proxy (Fly, Render, etc.)
-app.set('trust proxy', 1);
-
-// route de santé pour les checks Fly
-app.get('/healthz', (req, res) => {
-  res.type('text').send('ok');
-});
-
-
   const server = http.createServer(app);
   app.set('trust proxy', 1);
-  app.set('etag', false); 
 
   /* Sessions (partagées avec socket.io) */
    const isProd = process.env.NODE_ENV === 'production';
 
 const sessionMiddleware = session({
-  name   : 'sid',
   secret : process.env.SESSION_SECRET || 'ChangeMe',
-  resave : true,
+  resave : false,
   saveUninitialized: false,
   store  : MongoStore.create({ mongoUrl: MONGODB_URI }),
   cookie : {
-    maxAge  : 1000 * 60 * 60 * 2,
+    maxAge  : 1000 * 60 * 60 * 2, // 2h
     sameSite: 'lax',
     httpOnly: true,
-    secure  : isProd        // ✅ true en prod (HTTPS), false en local (HTTP)
+    secure  : isProd
   }
 });
-
-
   /* Vues & statiques */
   app.set('view engine','ejs');
   app.set('views', path.join(__dirname,'views'));
@@ -540,16 +443,6 @@ const sessionMiddleware = session({
 
   /* 🔐 user en session → req.user */
   app.use(attachUser);
-
-
-
-app.get('/dump-headers', (req,res) => {
-  res.set('Cache-Control', 'no-store');
-  res.json({ headers: req.headers });
-});
-
-
-
   app.use('/api', requireAuth, limitToInspection(), limitAnimToOwnEtab());
 
   /* Helpers */
@@ -587,85 +480,41 @@ app.get('/dump-headers', (req,res) => {
 
 
   /* ===== Auth ===== */
- app.get('/login',(req,res)=> {
-  res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-
-  const role = ['admin','anim','insp'].includes(req.query.role) ? req.query.role : 'anim';
-  res.render('login',{ error:null, role });
-});
-
+  app.get('/login',(req,res)=> {
+    const role = ['admin','anim','insp'].includes(req.query.role) ? req.query.role : 'anim';
+    res.render('login',{ error:null, role });
+  });
 
   app.post('/auth/register', isAuth, isAdmin, async (req,res)=>{
-  const { nomComplet, email, password, etablissement, role='anim', inspection='artsplastiques' } = req.body;
-  if(!email||!password) return res.status(400).json({ error:'email & pass requis' });
-
-  const emailLc = String(email).trim().toLowerCase();
-  const exists  = await User.exists({ email: emailLc });
-  if (exists) return res.status(400).json({ error:'Email déjà utilisé.' });
-
-  const hash = await bcrypt.hash(password,12);
-  const u = await User.create({
-    nomComplet,
-    email: emailLc,
-    etablissement,
-    role,
-    inspection: String(inspection).toLowerCase(),
-    passwordHash: hash
+    const { nomComplet, email, password, etablissement, role='anim', inspection='artsplastiques' } = req.body;
+    if(!email||!password) return res.status(400).json({ error:'email & pass requis' });
+    const hash = await bcrypt.hash(password,12);
+    const u = await User.create({ nomComplet, email, etablissement, role, inspection, passwordHash:hash });
+    res.json({ message:'OK', id:u._id });
   });
-  res.json({ message:'OK', id:u._id });
-});
 
-
-
- app.post('/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const roleForView = ['admin','anim','insp'].includes(req.body.role) ? req.body.role : 'anim';
-
-    const user = await User.findOne({ email });
-    if (!user || !(await user.verifyPassword(password))) {
-      return res.status(401).render('login', { error: 'Identifiants invalides', role: roleForView });
-    }
-
-    req.session.regenerate((err) => {
-      if (err) {
-        console.error('session regenerate failed:', err);
-        return res.status(500).render('login', { error: 'Erreur session', role: roleForView });
-      }
-
-      req.session.user = {
-        id         : user._id,
-        nom        : user.nomComplet,
-        etab       : user.etablissement,
-        etabId     : user.etablissementId || null,
-        departement: user.departement || '',
-        departementCode: user.departementCode || '',
-        role       : user.role,
-        inspection : user.inspection || 'artsplastiques',
-        specialite : user.specialite || ''
-      };
-
-      console.log('💾 Will save session for', req.session.user);
-
-      req.session.save((err2) => {
-        if (err2) {
-          console.error('session save failed:', err2);
-          return res.status(500).render('login', { error: 'Erreur session', role: roleForView });
-        }
-        if (user.role === 'admin') return res.redirect('/admin');
-        if (user.role === 'insp')  return res.redirect('/inspector');
-        return res.redirect('/collecte/nouvelle');
-      });
-    });
-  } catch (e) {
-    console.error('Login error:', e);
-    return res.status(500).render('login', { error: 'Erreur serveur', role: 'anim' });
+  app.post('/auth/login', async (req,res)=>{
+  const { email, password, role='anim' } = req.body;
+  const user = await User.findOne({ email });
+  if(!user || user.role!==role || !(await user.verifyPassword(password))){
+    return res.status(401).render('login',{ error:'Identifiants invalides', role });
   }
+  await regenerateSession(req);
+  req.session.user = {
+    id         : user._id,
+    nom        : user.nomComplet,
+    etab       : user.etablissement,
+    etabId     : user.etablissementId || null,
+    departement: user.departement || '',
+    departementCode: user.departementCode || '',
+    role       : user.role,
+    inspection : user.inspection || 'artsplastiques',
+    specialite : user.specialite || ''
+  };
+   // 👇 Ajoute cette ligne pour vérifier ce qui est stocké
+  console.log('Session user après login:', req.session.user);
+  res.redirect('/');
 });
-
-
 
 
   app.post('/auth/logout',(req,res)=> req.session.destroy(()=>res.redirect('/login')));
@@ -675,19 +524,6 @@ app.get('/dump-headers', (req,res) => {
   app.get('/inspector', isAuth, isInsp, (req,res)=> res.render('inspector',{ user:req.user }));
   app.get('/inspector/carte', isAuth, isInsp, (req,res)=> res.render('inspector_carte',{ user:req.user }));
 
-  // 👇 Page de paramétrage établissement (AP connecté)
-app.get(
-  '/parametrage',
-  requireAuth,               // doit être connecté
-  limitToInspection(),       // même inspection
-  limitAnimToOwnEtab(),      // même établissement
-  requireRole('anim'),       // rôle AP
-  (req, res) => {
-    res.render('parametrage.ejs', { user: req.user });
-  }
-);
-
-
   /* Monte l’API Admin */
   app.use('/admin', requireAuth, isAdmin, adminRouter);
   app.use('/api/inspecteur', requireAuth, limitToInspection(), inspecteurApiRouter);
@@ -696,16 +532,6 @@ app.use('/api/teachers', require('./routes/teachers'));
 app.use('/inspecteur/enseignants', inspTeach);
 
 app.use('/', inspecteurTeachers);
-
-app.use(
-  '/api/parametrage',
-  requireAuth,
-  limitToInspection(),
-  limitAnimToOwnEtab(),
-  requireRole('anim'),
-  require('./routes/parametrage')
-);
-
   /* ===== APIs de synthèse ===== */
   app.get('/api/summary/list', isAuth, isInsp, withInsp, async (req,res)=>{
   const { cycle, specialite, evaluation, trimestre, etablissement, departement } = req.query;
@@ -793,6 +619,9 @@ app.get('/api/summary/progress', isAuth, isInsp, withInsp, async (req,res)=>{
 
   app.get('/api/summary/by-etab', isAuth, isInsp, withInsp, async (req,res)=>{
   const { cycle, specialite, evaluation, trimestre, etablissement, departement, classe } = req.query;
+    const wantClass = Boolean(classe);
+  const baseCible = wantClass ? normStrict(splitClassLabel(classe).base) : null;
+
   if(!cycle || !specialite) return res.status(400).json({ error:'cycle & specialite requis' });
 
   const f = { inspection:req.insp, cycle:String(cycle), specialite:String(specialite).toUpperCase() };
@@ -802,8 +631,7 @@ app.get('/api/summary/progress', isAuth, isInsp, withInsp, async (req,res)=>{
   // 👇 filtres supplémentaires (optionnels)
   if (etablissement) f.etablissement = etablissement;
   if (departement)   f.departement   = departement;
-const wantClass = Boolean(classe);
-  const baseCible = wantClass ? normStrict(splitClassLabel(classe).base) : null;
+
     const fiches = await Collecte.find(f).lean();
     const byE = {};
     for (const F of fiches) {
@@ -1337,18 +1165,15 @@ app.get('/api/summary/school-map', isAuth, isInsp, withInsp, async (req,res)=>{
 
   // Accueil : si pas connecté → login.ejs ; sinon → redirection selon rôle
 app.get('/', (req, res) => {
-  res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-
   if (!req.user) {
     const role = ['admin','anim','insp'].includes(req.query.role) ? req.query.role : 'anim';
-    return res.render('login', { error: null, role });
+    return res.render('login', { error: null, role }); // 👈 on rend login.ejs ici
   }
   if (req.user.role === 'admin') return res.redirect('/admin');
   if (req.user.role === 'insp')  return res.redirect('/inspector');
   return res.redirect('/collecte/nouvelle');
 });
+
   /* ===== Routes métier ===== */
   app.use(
   '/collecte',
@@ -1366,8 +1191,10 @@ app.get('/', (req, res) => {
   limitToInspection(),   // filtre par inspection seulement
   fichiersRouter
 );
- 
- app.use('/api/settings',requireAuth,
+  // APIs paramétrage
+ app.use(
+   '/api/settings',
+   requireAuth,
    limitToInspection(),   // impose req.query/body.inspection = req.user.inspection
    limitAnimToOwnEtab(),  // impose req.query/body.etablissement = req.user.etab (pour anim)
    require('./routes/settings')
@@ -1470,58 +1297,33 @@ app.post('/api/purge', async (req, res) => {
 
 
 
- // ---- Route reset du chat (optionnelle si store SQLite dispo)
-let chatStore = null;
-try {
-  chatStore = require('./db/chat'); // présent seulement si better-sqlite3 est compilé
-} catch (e) {
-  console.warn('Chat reset disabled (no SQLite store):', e.message);
-}
-
-if (chatStore) {
-  app.delete('/api/chat/reset', requireAuth, requireRole('insp'), async (req, res) => {
-    try {
-      const inspection = String(req.query.inspection || req.user?.inspection || '')
-        .trim().toLowerCase();
-      if (!inspection) return res.status(400).json({ ok:false, error:'inspection required' });
-
-      const room = `insp:${inspection}`;
-      chatStore.clearRoom(room);                // purge côté store (SQLite)
-      req.app.get('io')?.to(room).emit('chat:history', []); // vide chez les clients
-      res.json({ ok:true });
-    } catch (e) {
-      res.status(500).json({ ok:false, error: String(e.message || e) });
-    }
-  });
-}
-
-/* ===== Socket.IO (chat) ===== */
-const { Server } = require('socket.io');
-
-const io = new Server(server, {
-  cors: { origin: true, credentials: true }
-});
-
-app.set('io', io);
-// partage la session Express avec socket.io (pour req.user côté chat)
-io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
-
-try {
-  // n’attache le chat que si le module SQLite est chargeable (prod Render : souvent non)
+  /* ===== Socket.IO (chat) ===== */
+  const { Server } = require('socket.io');
+  const io = new Server(server, { cors:{ origin:true, credentials:true } });
+  app.set('io', io);
+  io.use((socket,next)=> sessionMiddleware(socket.request, {}, next));
   require('./server/sockets/chat')(io);
-  console.log('✅ Chat temps réel activé');
-} catch (e) {
-  console.warn('⚠️ Chat désactivé (module SQLite indisponible) :', e.message);
-}
 
-  app.get('/whoami', (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  res.json({
-    hasSession: !!req.session,
-    sessionUser: req.session?.user || null,
-    reqUser: req.user || null
-  });
+ // 🔽 place ce bloc APRÈS app.set('io', io) et require('./server/sockets/chat')(io)
+
+const chatStore = require('./db/chat'); // ou utilise attachChat.purge
+
+app.delete('/api/chat/reset', requireAuth, requireRole('insp'), async (req, res) => {
+  try {
+    const inspection = String(req.query.inspection || req.user?.inspection || '').trim().toLowerCase();
+    if (!inspection) return res.status(400).json({ ok:false, error:'inspection required' });
+
+    const room = `insp:${inspection}`;
+    chatStore.clearRoom(room);            // ✅ on efface la room dans SQLite
+
+    const io = req.app.get('io');
+    io.to(room).emit('chat:history', []); // vide chez les clients
+    res.json({ ok:true });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: String(e.message || e) });
+  }
 });
+
 
 
   // 404 JSON API
@@ -1535,12 +1337,9 @@ try {
     res.status(500).send('Erreur serveur.');
   });
 
- const PORT = process.env.PORT || 8080;
-const HOST = '0.0.0.0'; // important pour le cloud et pour Fly
-
-server.listen(PORT, HOST, () => {
-  console.log(`✅ Server listening on http://${HOST}:${PORT}`);
-});
+  /* Start */
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, ()=> console.log(`🚀  Serveur en ligne → http://localhost:${PORT}`));
 })();
 
 
