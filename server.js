@@ -292,26 +292,11 @@ const incoherences = [...unionAll]
 
   
   // ---- 4) Construction des lignes affichées : exclure les disciplines incohérentes
-// (= présentes dans au moins un dépôt mais pas tous)
-const incoherentKeys = new Set(
-  [...(function* () {
-    for (const KEY of unionAll) {
-      const cnt = countAll.get(KEY) || 0;
-      if (totalAll > 0 && cnt > 0 && cnt < totalAll) yield KEY; // incohérent
-    }
-  })()]
-);
-
+// ---- 4) Construction des lignes affichées: TOUTE discipline vue au moins une fois
 const rows = Object.entries(perDisc)
   .filter(([KEY]) => {
-    // Exception : cacher TECHNOLOGIE pour les classes ≠ 1ère année
-    if (KEY === 'TECHNOLOGIE' && !isFirstYearClass) return false;
-
-    // Si tu veux forcer TECHNOLOGIE à s'afficher en 1ère année même incohérente, dé-commente :
-    // if (KEY === 'TECHNOLOGIE' && isFirstYearClass) return (countAll.get(KEY) || 0) >= 1;
-
-    // Règle générale : garder uniquement les disciplines cohérentes (couverture 100 %)
-    return !incoherentKeys.has(KEY);
+    // On garde si la discipline apparaît dans ≥ 1 dépôt (finie l'intersection stricte)
+    return (countAll.get(KEY) || 0) >= 1;
   })
   .map(([, obj]) => {
     const P = packTotals(obj.totals);
@@ -323,6 +308,7 @@ const rows = Object.entries(perDisc)
     if (ai !== bi) return ai - bi;
     return a.nom.localeCompare(b.nom, 'fr');
   });
+
 
 // total = somme des lignes retenues (les incohérentes n'étant plus dans rows, elles ne faussent plus les stats)
 const totalT = rows.reduce((T, r) => {
