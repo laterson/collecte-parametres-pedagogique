@@ -103,7 +103,6 @@ async function countTeachersForScope({ insp, annee, cycle, specialite, etablisse
 
 
 
-
 function fp(obj){ const clone = JSON.parse(JSON.stringify(obj||{})); if (clone?.meta) delete clone.meta.generatedAt; return crypto.createHash('sha256').update(JSON.stringify(clone)).digest('hex'); }
 const ALLOWED = new Set(['anim','ap','insp','admin']);
 function roleOk(req){ const r = lower(req.user?.role); const alias = { animateur:'anim', ipr:'insp', inspector:'insp' }; return ALLOWED.has(alias[r] || r); }
@@ -152,7 +151,6 @@ function countStaffFromCards(cards) {
 
 
 
-
 // ================== Utils synthèse (communs) ==================
 const ACC_KEYS = ['Hd','Hf','Lp','Lf','Ldp','Ldf','Tp','Tf','Tdp','Tdf','Comp','M10','EffT','EffP'];
 const zeroAcc  = () => ({ Hd:0,Hf:0,Lp:0,Lf:0,Ldp:0,Ldf:0,Tp:0,Tf:0,Tdp:0,Tdf:0,Comp:0,M10:0,EffT:0,EffP:0 });
@@ -180,7 +178,6 @@ function mapDiscipline(d){
     EffP: n(d,'effPos','EffP','ensPoste','enseignantsEnPoste')
   };
 }
-
 
 
 // ======= Synthèse unifiée (2 modes) =======
@@ -342,7 +339,6 @@ router.get('/synthese', async (req, res, next) => {
 });
 
 
-
 /**
  * POST /carte-scolaire
  * Réception d'une carte scolaire émise par un AP (ou saisie côté insp).
@@ -420,7 +416,6 @@ router.post('/carte-scolaire', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-
 /**
  * GET /carte-scolaire/latest
  * Retourne la dernière version par (etablissement, annee, cycle, specialite)
@@ -456,7 +451,6 @@ router.get('/carte-scolaire/latest', async (req, res, next) => {
     res.json({ rows: Array.from(latest.values()) });
   }catch(e){ next(e); }
 });
-
 
 /**
  * GET /dashboard
@@ -541,7 +535,6 @@ router.get('/dashboard', async (req, res, next) => {
     });
   }catch(e){ next(e); }
 });
-
 
 
 // === SUPPRESSION BULK de cartes scolaires par liste d'IDs (dernières versions cochées dans l'UI)
@@ -657,7 +650,6 @@ router.get('/summary/topology', async (req,res,next)=>{
 });
 
 
-
 /**
  * GET /summary/kpis
  * KPIs centraux (heures, leçons, TP, réussite, effectifs, #étab, #AP, #dépôts)
@@ -732,7 +724,6 @@ const m10Cap  = Math.max(0, Math.min(totals.M10, compCap));
  const enseignantsTotauxRegion = staffKPIs.total;
 
 
-
     res.json({
       etablissements: etabSet.size,
       apActifs: apSet.size,
@@ -747,60 +738,147 @@ const m10Cap  = Math.max(0, Math.min(totals.M10, compCap));
   }catch(e){ next(e); }
 });
 
-
 /**
  * GET /summary/form-view
  * Blocs “classe -> disciplines + total” (utilisé par la table centrale)
  * Query: ?cycle=...&specialite=...&classe=(optionnel)
  */
- router.get('/summary/form-view', async (req,res,next)=>{
+ // ===== util: normalisation espace/accents (en haut si pas déjà présent)
+const normSpaces = s => String(s||'').replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim();
+const normKey    = s => normSpaces(s).normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+
+// ===== remplace la lecture de la liste par ce helper
+function getDiscList(div){
+  // 1) tableaux classiques sous divers alias
+  const candidates = [
+    div?.disciplines,
+    div?.modules,
+    div?.matieres,      // variantes FR
+    div?.matières,
+    div?.subjects,      // EN
+    div?.programmes,
+    div?.programme,
+  ].filter(Array.isArray);
+
+  if (candidates.length && candidates[0].length) return candidates[0];
+
+  // 2) forme "objet" : { "Technologie": {...}, "TP": {...} }
+  const obj =
+    (div && typeof div.disciplines === 'object' && !Array.isArray(div.disciplines) && div.disciplines) ||
+    (div && typeof div.modules     === 'object' && !Array.isArray(div.modules)     && div.modules)     ||
+    (div && typeof div.matieres    === 'object' && !Array.isArray(div.matieres)    && div.matieres)    ||
+    (div && typeof div.subjects    === 'object' && !Array.isArray(div.subjects)    && div.subjects)    ||
+    (div && typeof div.programme   === 'object' && !Array.isArray(div.programme)   && div.programme);
+
+  if (obj){
+    return Object.entries(obj).map(([name, payload]) => ({
+      nom: name, ...(payload||{})
+    }));
+  }
+
+  // 3) rien trouvé
+  return [];
+}
+
+// ===== élargis mapDiscipline (alias supplémentaires FR/EN)
+function mapDiscipline(d){
+  const num = (o, ...keys)=>{ 
+    for(const k of keys){ 
+      const v = o?.[k]; 
+      if (v!=null && String(v).trim?.()!=='') return Number(v)||0; 
+    } 
+    return 0; 
+  };
+  return {
+    nom : d.discipline || d.nom || d.name || d.module || d.matiere || d.subject || '',
+    // heures
+    Hd  : num(d,'hD','Hd','heuresDues','heuresPrevues','hoursDue','hoursPlanned'),
+    Hf  : num(d,'hF','Hf','heuresFaites','hoursDone','hoursMade'),
+    // leçons
+    Lp  : num(d,'lp','Lp','leconsPrevues','lessonsPrevues','lessonsPlanned','nbLeconsPrevues'),
+    Lf  : num(d,'lf','Lf','leconsFaites','lessonsFaites','lessonsDone','nbLeconsFaites'),
+    // leçons digitalisées
+    Ldp : num(d,'ldp','Ldp','leconsDigPrevues','leconsDigitaliseesPrevues','lessonsDigitalPlanned'),
+    Ldf : num(d,'ldf','Ldf','leconsDigFaites','leconsDigitaliseesFaites','lessonsDigitalDone'),
+    // TP
+    Tp  : num(d,'tp','Tp','tpPrevus','travauxPrevus','practicalsPlanned'),
+    Tf  : num(d,'tf','Tf','tpFaits','travauxFaits','practicalsDone'),
+    // TP digitalisés
+    Tdp : num(d,'tdp','Tdp','tpDigPrevus','tpDigitalisesPrevus','practicalsDigitalPlanned'),
+    Tdf : num(d,'tdf','Tdf','tpDigFaits','tpDigitalisesFaits','practicalsDigitalDone'),
+    // réussite & effectifs (si jamais présents dans les modules)
+    Comp: num(d,'comp','Comp','elevesComposes','eleves','studentsSatForExam'),
+    M10 : num(d,'m10','M10','studentsPassed','reussis'),
+    EffT: num(d,'effTot','EffT','ensTot','enseignantsTotaux','teachersTotal'),
+    EffP: num(d,'effPos','EffP','ensPoste','enseignantsEnPoste','teachersOnPost')
+  };
+}
+
+router.get('/summary/form-view', async (req,res,next)=>{
   try{
     if (!roleOk(req)) return res.status(403).json({ error:'forbidden' });
     const u = req.session.user;
     const annee = req.query.annee || getYear();
     const { cycle, specialite } = req.query;
-    const classeFilter = normalize(req.query.classe);
+    const classeFilterRaw = normalize(req.query.classe);           // affichage
+    const classeFilterKey = classeFilterRaw ? normKey(classeFilterRaw) : ''; // comparaison
 
     if (!cycle || !specialite) return res.status(400).json({ error:'cycle & specialite requis' });
 
     const f = { inspection: u.inspection, annee, cycle, specialite: String(specialite).toUpperCase() };
     const rows = await Collecte.find(f).lean();
 
-    // Agrégat: base de classe -> { etablissements:Set, disciplines:Map(nom->acc), total:acc }
+    // Agrégat: base -> { etablissements:Set, labelBase:String, disciplines:Map(key->{label,acc}), total:acc }
     const byClass = new Map();
 
     for (const d of rows){
       const etab = d.etablissement || '';
-      (d.classes||[]).forEach(div=>{
+      for (const div of (d.classes||[])){
         const raw = div?.nom || div?.classe || '';
-        const { base } = splitClassLabel(raw);     // <<< fusion des divisions
-        if (!base) return;
-        if (classeFilter && base !== classeFilter) return;
+        if (!raw) continue;
 
-        if(!byClass.has(base)) byClass.set(base, {
+        const { base } = splitClassLabelRobust(raw);     // base robuste
+        const baseKey  = normKey(base);
+        if (!baseKey) continue;
+        if (classeFilterKey && baseKey !== classeFilterKey) continue;
+
+        if (!byClass.has(baseKey)) byClass.set(baseKey, {
           etablissements: new Set(),
-          disciplines: new Map(),
+          labelBase: base,                // on retient l’étiquette telle qu’elle apparaît
+          disciplines: new Map(),         // key canonique -> { label, acc }
           total: zeroAcc()
         });
-        const C = byClass.get(base);
+        const C = byClass.get(baseKey);
         if (etab) C.etablissements.add(etab);
 
-        const list = (div.disciplines || div.modules || []).map(mapDiscipline);
+       const list = getDiscList(div).map(mapDiscipline);
+
         for (const disc of list){
-          if(!C.disciplines.has(disc.nom)) C.disciplines.set(disc.nom, zeroAcc());
-          const acc = C.disciplines.get(disc.nom);
-          addTo(acc, disc);
+          const rawName = disc.nom || '';
+          const key     = normKey(rawName);
+          if (!key) continue;            // skip sans nom
+
+          if (!C.disciplines.has(key)){
+            // on garde le premier libellé “propre” qu’on voit pour l’affichage
+            C.disciplines.set(key, { label: normSpaces(rawName), acc: zeroAcc() });
+          }
+          const slot = C.disciplines.get(key);
+          addTo(slot.acc, disc);
           addTo(C.total, disc);
         }
-      });
+      }
     }
 
-    const out = [...byClass.entries()].map(([name, C])=>({
-      classe: name,
-      etablissements: C.etablissements.size,
-      disciplines: [...C.disciplines.entries()].map(([nom,acc])=>({ nom, ...acc })),
-      total: C.total
-    })).sort((a,b)=> a.classe.localeCompare(b.classe,'fr'));
+    const out = [...byClass.values()]
+      .map(C => ({
+        classe: C.labelBase,                         // étiquette lisible
+        etablissements: C.etablissements.size,
+        disciplines: [...C.disciplines.values()]
+          .map(({label, acc}) => ({ nom: label, ...acc }))
+          .sort((a,b)=> String(a.nom||'').localeCompare(String(b.nom||''),'fr')),
+        total: C.total
+      }))
+      .sort((a,b)=> String(a.classe||'').localeCompare(String(b.classe||''),'fr'));
 
     res.json(out.length===1 ? out[0] : out);
   }catch(e){ next(e); }
@@ -937,7 +1015,6 @@ const classeBase = normalize(req.query.classe);
   };
 }).sort((a,b)=> String(a.etablissement||'').localeCompare(b.etablissement||''));
 
-
    const sumTot   = rows.reduce((s,r)=> s + Number(r.enseignantsTotaux||0), 0);
  const sumPoste = rows.reduce((s,r)=> s + Number(r.enseignantsEnPoste||0), 0);
  const stats = {
@@ -950,7 +1027,6 @@ const classeBase = normalize(req.query.classe);
     res.json({ rows, stats });
   }catch(e){ next(e); }
 });
-
 
 /**
  * GET /carte/etab?etablissement=...
@@ -991,7 +1067,6 @@ router.get('/carte/etab', async (req, res, next) => {
     res.json({ meta, effectifs, staff });
   }catch(e){ next(e); }
 });
-
 
 /**
  * GET /summary/deposits
@@ -1048,7 +1123,6 @@ const classeBase = normalize(req.query.classe);
   }catch(e){ next(e); }
 });
 
-
 /**
  * GET /summary/deposits/:id
  * Détail d’un dépôt (pour l’overlay).
@@ -1097,7 +1171,6 @@ router.get('/summary/deposits/:id', async (req, res, next) => {
   }
 });
 
-
 // —— Répartition élèves + (si dispo) enseignants H/F par cycle
 router.get('/gender-by-cycle', async (req, res, next)=>{
   try{
@@ -1139,7 +1212,6 @@ router.get('/gender-by-cycle', async (req, res, next)=>{
     res.json(out);
   }catch(e){ next(e); }
 });
-
 
 // === SUPPRIMER la dernière carte scolaire d'un établissement (dans le périmètre courant)
 router.delete('/carte-scolaire/last', async (req, res, next) => {
@@ -1212,7 +1284,6 @@ router.delete('/carte-scolaire/:id', async (req, res, next) => {
     res.json({ ok:true });
   }catch(e){ next(e); }
 });
-
 
 
 // === SUPPRESSION d'un dépôt (Collecte) par _id
@@ -1305,7 +1376,6 @@ async function buildDeptMap(insp, annee){
   }
   return map;
 }
-
 
 // etab -> departement (depuis SchoolCard.meta si dispo)
 // [REPERE A] — buildDeptMap filtré par inspection + année
@@ -1540,5 +1610,5 @@ const deptMap = await buildDeptMap(insp, annee);
 
 
 
-
 module.exports = router;
+
