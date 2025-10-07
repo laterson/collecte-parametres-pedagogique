@@ -36,7 +36,6 @@ const inspecteurApiRouter = require('./server/routes/inspecteur');
 const inspecteurTeachers = require('./routes/inspecteur_teachers');
 const inspTeach = require('./routes/inspecteur_teachers');
 
-
 /* ===== Seed admin (1er démarrage) ===== */
 async function seedAdmin(){
   if (await User.exists({ role:'admin' })) { console.log('✅ Admin ok'); return; }
@@ -72,7 +71,6 @@ const TRI  = { T1:[1,2], T2:[3,4], T3:[5,6] };
 const pct  = (den,num)=> den ? Number(((num/den)*100).toFixed(2)) : 0;
 const norm = s => String(s ?? '').trim();
 const normStrict = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,'').trim();
-
 
 // 👇 AJOUTER ICI (global, une seule fois)
 function splitClassLabel(label){
@@ -160,7 +158,6 @@ function keyOf(label){
 }
 
 
-
 function buildFormViewForClass(fiches, expectedList, classeName, expectedEvalCount = 6) {
   const expected = Array.isArray(expectedList) ? expectedList : [];
   const expectedOrder = new Map(expected.map((n, i) => [n, i]));
@@ -173,7 +170,6 @@ function buildFormViewForClass(fiches, expectedList, classeName, expectedEvalCou
   const baseRaw  = splitClassLabel(classeName).base || '';
   const baseNorm = baseRaw.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   const isFirstYearClass = /^(?:1(?:ere|re)?|premiere)\b/.test(baseNorm);
-
 
   // ---- 1) ne garder que le DERNIER dépôt par (etab|anim)
   const latest = new Map();
@@ -289,7 +285,6 @@ const incoherences = [...unionAll]
   })
   .sort((a, b) => (a.coverage - b.coverage) || a.nom.localeCompare(b.nom, 'fr'));
 
-
   
   // ---- 4) Construction des lignes affichées : exclure les disciplines incohérentes
 // (= présentes dans au moins un dépôt mais pas tous)
@@ -343,7 +338,6 @@ const totalT = rows.reduce((T, r) => {
     expected
   };
 }
-
 
 /* ===== Vue AP (baselines) ===== */
 async function buildAPForm({ inspection, etablissement, annee, cycle, specialite }) {
@@ -478,7 +472,6 @@ const sessionMiddleware = session({
     );
   }
 
-
   /* ===== Auth ===== */
   app.get('/login',(req,res)=> {
     const role = ['admin','anim','insp'].includes(req.query.role) ? req.query.role : 'anim';
@@ -515,7 +508,6 @@ const sessionMiddleware = session({
   console.log('Session user après login:', req.session.user);
   res.redirect('/');
 });
-
 
   app.post('/auth/logout',(req,res)=> req.session.destroy(()=>res.redirect('/login')));
 
@@ -685,7 +677,6 @@ const T = (agg[key] ||= { n:0, ...emptyTotals() });
   res.json(rows);
 });
 
-
   /* ========= formulaire inspecteur (vue "form-view") ========= */
 app.get('/api/summary/form-view', isAuth, isInsp, withInsp, async (req,res)=>{
   const { cycle, specialite, evaluation, trimestre, classe, etablissement, departement } = req.query;
@@ -735,7 +726,6 @@ for (const F of fiches) (F.classes||[]).forEach(c=>{
   res.json(classNames.map(build));
 });
 
-
   // === AP: vue formulaire avec baselines (priorité Effectifs) ===
   app.get('/api/collecte/form-ap', isAuth, withInsp, async (req,res,next)=>{
     try{
@@ -773,7 +763,6 @@ for (const F of fiches) (F.classes||[]).forEach(c=>{
   res.json({ metric, threshold:thr, rows:filtered });
 });
 
-
   app.get('/api/summary/global', isAuth, isInsp, withInsp, async (req,res)=>{
   const { etablissement, departement } = req.query;
 
@@ -801,7 +790,6 @@ for (const F of fiches) (F.classes||[]).forEach(c=>{
   const annRows  = [{ label:'Annuel', ...collect(fiches) }];
   res.json({ eval:evalRows, tri:triRows, ann:annRows });
 });
-
 
   /* ======== NOUVELLES ROUTES ======== */
 // Routes AP (saisie effectifs & personnel)
@@ -939,7 +927,6 @@ app.get('/api/summary/kpis', isAuth, isInsp, withInsp, async (req,res)=>{
     }
   });
 });
-
 
   // 3) Carte scolaire régionale (agrège divisions, élèves & enseignants)
 app.get('/api/summary/school-map', isAuth, isInsp, withInsp, async (req,res)=>{
@@ -1104,7 +1091,6 @@ app.get('/api/summary/school-map', isAuth, isInsp, withInsp, async (req,res)=>{
   // 👇 ciblage par établissement/département (si fournis)
   if (etablissement) f.etablissement = etablissement;
   if (departement)   f.departement   = departement;
-
 
     const docs = await Collecte.find(f).sort({ createdAt:-1 }).lean();
     const out = docs.map(d=>({
@@ -1296,7 +1282,6 @@ app.post('/api/purge', async (req, res) => {
 
 
 
-
   /* ===== Socket.IO (chat) ===== */
   const { Server } = require('socket.io');
   const io = new Server(server, { cors:{ origin:true, credentials:true } });
@@ -1325,7 +1310,6 @@ app.delete('/api/chat/reset', requireAuth, requireRole('insp'), async (req, res)
 });
 
 
-
   // 404 JSON API
   app.use('/api', (_req,res)=> res.status(404).json({ error:'not found' }));
   /* ===== Error handler ===== */
@@ -1341,5 +1325,6 @@ app.delete('/api/chat/reset', requireAuth, requireRole('insp'), async (req, res)
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, ()=> console.log(`🚀  Serveur en ligne → http://localhost:${PORT}`));
 })();
+
 
 
