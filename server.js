@@ -225,78 +225,88 @@ function buildFormViewForClass(fiches, expectedList, classeName, expectedEvalCou
     return out;
   })();
 
- // ---- 3bis) INCOHÉRENCES (TOUS les dépôts), + dénominateur théorique AP×évals attendues
-  const presentByAllDeposits = new Map(); // depId -> { have:Set(KEY), etab, ap }
-  const activeDepKeys = new Set();        // depKey = etab|ap : AP "actifs" sur cette classe
-for (const F of (fiches || [])) {
-  const depId = String(F._id || Math.random());
-  const have  = new Set();
-  const matches = (F.classes || []).filter(c => {
-    const base = normStrict(splitClassLabel(c?.nom || '').base);
-    return base === wantedBase;
-  });
-  if (matches.length) {
-      activeDepKeys.add(`${F.etablissement || '—'}|${F.animateur || '—'}`);
-    }
-  for (const cl of matches) {
-    getDiscs(cl).forEach(d => {
-      const label = String(d.discipline ?? d.nom ?? d.name ?? '')
-        .replace(/\u00A0/g, ' ')
-        .trim();
-      if (label) have.add(label.toUpperCase());
-    });
-  }
-  presentByAllDeposits.set(depId, { have, etab: (F.etablissement||''), ap:(F.animateur||'') });
-}
+// ---- 3bis) INCOHÉRENCES (sur les DERNIERS dépôts uniquement)
+const depList = [...presentByDepot.entries()]; // [ "etab|ap", Set(KEY) ]
+const totalDepotsLatest = depList.length;
 
-// Comptes globaux
-const allEntries = [...presentByAllDeposits.entries()]; // [depId, {have,etab,ap}]
-const totalAll = allEntries.length;
-const unionAll = new Set();
-for (const [,info] of allEntries) for (const k of info.have) unionAll.add(k);
-
-const countAll = new Map();
-for (const KEY of unionAll) countAll.set(KEY, 0);
-for (const [,info] of allEntries) {
-  for (const KEY of unionAll) {
-    if (info.have.has(KEY)) countAll.set(KEY, (countAll.get(KEY)||0) + 1);
+// Compter par discipline le nombre de dépôts "latest" où elle apparaît
+const countLatest = new Map();
+for (const [, have] of depList) {
+  for (const KEY of have) {
+    countLatest.set(KEY, (countLatest.get(KEY) || 0) + 1);
   }
 }
 
-// Incohérences + détails (où ça manque)
-const incoherences = [...unionAll]
+// Union des disciplines observées sur les "latest"
+const unionLatest = new Set(countLatest.keys());
+
+// Détails des incohérences (présente quelque part mais pas partout)
+const incoherences = [...unionLatest]
   .filter(KEY => {
-    if (isFirstYearClass && KEY === 'TECHNOLOGIE') {
-      // Spécifique 1ère année DECO : doit être partout
-      return countAll.get(KEY) < totalAll;
-    } else {
-      // règle générale : présente quelque part mais pas partout
-      return totalAll > 0 && countAll.get(KEY) > 0 && countAll.get(KEY) < totalAll;
-    }
+    if (!totalDepotsLatest) return false;
+    const c = countLatest.get(KEY) || 0;
+    // Cas 1ère année : TECHNOLOGIE doit être partout → incohérence si c < total
+    if (isFirstYearClass && KEY === 'TECHNOLOGIE') return c > 0 && c < totalDepotsLatest;
+    // Règle générale : c > 0 et c < total → incohérent
+    return c > 0 && c < totalDepotsLatest;
   })
   .map(KEY => {
-    const detailsMissing = allEntries
-      .filter(([,info]) => !info.have.has(KEY))
-      .map(([depId, info]) => ({ depId, etab: info.etab, ap: info.ap }));
-    const cov = Number(((countAll.get(KEY) / totalAll) * 100).toFixed(2));
+    const details = depList
+      .filter(([, have]) => !have.has(KEY))
+      .map(([depKey]) => {
+        const [etab, ap] = depKey.split('|');
+        return { etab, ap };
+      });
+    const presentIn = countLatest.get(KEY) || 0;
+    const coverage = Number(((presentIn / totalDepotsLatest) * 100).toFixed(2));
     return {
-      nom: (perDisc[KEY]?.label) || KEY,
-      presentIn: countAll.get(KEY),
-      missingIn: totalAll - countAll.get(KEY),
-      coverage: cov,
-      details: detailsMissing  // 👈 nouveau : liste des dépôts défaillants
+      nom       : (perDisc[KEY]?.label) || KEY,
+      presentIn,
+      missingIn : totalDepotsLatest - presentIn,
+      coverage,
+      details
     };
   })
   .sort((a, b) => (a.coverage - b.coverage) || a.nom.localeCompare(b.nom, 'fr'));
+
+// Ensemble des disciplines incohérentes par leur KEY (majuscules)
+const incoherentKeys = new Set(
+  [...unionLatest].filter(KEY => {
+    const c = countLatest.get(KEY) || 0;
+    if (!totalDepotsLatest) return false;
+    // On laisse passer TECHNOLOGIE en 1ère année même si incohérente (elle sera gérée au filtre)
+    if (isFirstYearClass && KEY === 'TECHNOLOGIE') return false;
+    return c > 0 && c < totalDepotsLatest;
+  })
+);
 
 
   
   // ---- 4) Construction des lignes affichées: TOUTE discipline vue au moins une fois
 const rows = Object.entries(perDisc)
+  // ---- 4) Construction des lignes affichées : exclure les disciplines incohérentes
+const rows = Object.entries(perDisc)
   .filter(([KEY]) => {
-    // On garde si la discipline apparaît dans ≥ 1 dépôt (finie l'intersection stricte)
-    return (countAll.get(KEY) || 0) >= 1;
+    // Masquer TECHNOLOGIE si ce n’est pas une 1ère année
+    if (KEY === 'TECHNOLOGIE' && !isFirstYearClass) return false;
+
+    // ⛔️ Exclure les disciplines incohérentes du tableau de synthèse
+    if (incoherentKeys.has(KEY)) return false;
+
+    // Sinon on garde
+    return true;
   })
+  .map(([, obj]) => {
+    const P = packTotals(obj.totals);
+    return { nom: obj.label, ...P };
+  })
+  .sort((a, b) => {
+    const ai = expectedOrder.has(a.nom) ? expectedOrder.get(a.nom) : 1e9;
+    const bi = expectedOrder.has(b.nom) ? expectedOrder.get(b.nom) : 1e9;
+    if (ai !== bi) return ai - bi;
+    return a.nom.localeCompare(b.nom, 'fr');
+  });
+
   .map(([, obj]) => {
     const P = packTotals(obj.totals);
     return { nom: obj.label, ...P };
